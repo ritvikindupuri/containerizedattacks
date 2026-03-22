@@ -21,7 +21,50 @@ Ultimately, this system serves as both an educational tool and a proof-of-concep
 
 The architecture of the system is divided into three primary components: the Attacker (Orchestrator), the Vulnerable Targets, and the Detection & Visualization Dashboard. Unlike standard applications, the dashboard operates directly on the host machine, interfacing with the Docker daemon to monitor the isolated container network.
 
+```mermaid
+flowchart TD
+    subgraph Host_Machine["🖥️ Host Machine OS"]
+        DASH["run_dashboard.py (Port 8888)\n- Docker API SDK\n- ML Risk Assessor\n- UI Rendering"]
+        DOCKER["Docker Daemon /var/run/docker.sock"]
+    end
+
+    subgraph Docker_Network["🐳 attack-net (Isolated Docker Bridge Network)"]
+        subgraph Targets["🎯 Vulnerable Infrastructure"]
+            WEB["vulnerable-web (Port 80)"]
+            API["vulnerable-api (Port 5000)"]
+            DB["vulnerable-db (Port 5432)"]
+            PRIV["privileged-container"]
+        end
+
+        ORCH["☠️ attack-orchestrator\n(Prometheus Port 9090)"]
+    end
+
+    %% Flow 1: Attack Execution
+    ORCH -- "Flow 1: Executes exploits\n(Socket escape, Namespace manipulation, etc.)" --> Targets
+
+    %% Flow 2: Metrics Export
+    ORCH -- "Flow 2: POSTs result to internal metrics_exporter.py" --> ORCH
+
+    %% Flow 3: Dashboard Polling
+    DASH -- "Flow 3a: Polls http://localhost:9090/metrics via docker exec" --> ORCH
+    DASH -- "Flow 3b: Polls container.stats() via API" --> DOCKER
+    DOCKER -- "Live CPU/Mem/Network stats" --> Targets
+
+    %% Flow 4 & 5
+    DASH -- "Flow 4: ML Scoring & Flow 5: Real-Time UI Update" --> DASH
+```
+<p align="center"><em>Figure 1: High-level System Architecture and Data Flows</em></p>
+
 ### Architectural Components
+
+To provide a concrete visualization of the isolated attack network, Figure 2 below displays the active container stack as seen during an active simulation.
+
+<p align="center">
+  <img src="https://imgur.com/uApHV20.png" alt="Docker Containers Running" width="800"/>
+</p>
+<p align="center"><em>Figure 2: The complete isolated Docker container stack running the simulation.</em></p>
+
+As visualized above, the architecture is driven by the following components:
 
 1.  **Attack Orchestrator (`attack-orchestrator`)**: A dedicated container that sequentially executes Python-based attack scripts against the target environment. It also runs a Prometheus metrics exporter on port `9090` to expose the status and results of these attacks.
 2.  **Vulnerable Infrastructure**: A meticulously misconfigured stack representing a flawed enterprise environment. This includes a web application (`vulnerable-web`), an API (`vulnerable-api`), a PostgreSQL database (`vulnerable-db`), and a deeply flawed privileged container (`privileged-container`).
@@ -44,6 +87,13 @@ The system relies on asynchronous polling and direct API integrations to maintai
     As the dashboard ingests new attack data from the orchestrator, it passes the attack type to its internal risk assessment logic. The system identifies the specific attack, maps it to predefined MITRE ATT&CK tactics and techniques (e.g., `T1611 - Escape to Host`), and applies the weighted Random Forest feature model to calculate a definitive risk score (0-100) and severity level (LOW to CRITICAL).
 *   **Flow 5: Real-Time UI Update**
     The aggregated payload—containing the parsed attacks, calculated ML risk scores, MITRE mappings, and live container telemetry—is returned as JSON to the frontend, which dynamically updates the DOM without requiring a page reload.
+
+<p align="center">
+  <img src="https://imgur.com/8gNSID6.png" alt="Security Dashboard" width="800"/>
+</p>
+<p align="center"><em>Figure 3: The standalone Host Dashboard actively updating with real-time ML risk scoring and Docker container telemetry.</em></p>
+
+As demonstrated in Figure 3, the resulting Real-Time UI seamlessly synthesizes the outputs of Flow 1 through Flow 5. The dashboard visually segments the threat intelligence: displaying the distribution of MITRE ATT&CK techniques in the top left, a detailed expandable table showing the precise ML-calculated feature scores for each attack in the center, and live Docker SDK metrics (CPU/Memory usage) for the specific containers targeted by the attacker at the bottom.
 
 ## 3. Machine Learning Risk Assessment Model
 
@@ -242,6 +292,13 @@ The system relies on a meticulously configured `docker-compose.yml` to define th
 ### Vulnerable Web Application (`vulnerable-web`)
 
 This container simulates a front-end web application that has been critically misconfigured during deployment.
+
+<p align="center">
+  <img src="https://imgur.com/zMAeMPv.png" alt="Vulnerable Customer Portal" width="800"/>
+</p>
+<p align="center"><em>Figure 4: The Vulnerable E-Commerce Customer Portal exposing dangerous administrative endpoints.</em></p>
+
+As seen in Figure 4, the web application provides a realistic attack surface. Beyond standard functional flaws like SQL injection points in the "Search Orders" box, it exposes highly dangerous functionality such as a raw "System Commands" execution panel. When an attacker combines these application-layer vulnerabilities with the infrastructure misconfigurations detailed below, they can escalate from executing a simple `whoami` command on the web server to achieving a full host escape.
 
 ```yaml
   vulnerable-web:
