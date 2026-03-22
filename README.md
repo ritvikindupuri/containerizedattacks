@@ -26,33 +26,33 @@ The dashboard is a standalone Python/Flask server that runs on your machine (not
 ## Architecture
 
 ```mermaid
-flowchart TD
-    HOST["🖥️ Your Machine\nrun_dashboard.py → localhost:8888\nFlask + Docker SDK"]
-
-    subgraph DOCKER["Docker Network — 172.20.0.0/16"]
-        subgraph ATTACKER["⚔️ ATTACKER"]
-            ORCH["☠️ attack-orchestrator\n7 container escape scripts\nPrometheus metrics :9090"]
-        end
-
-        subgraph TARGETS["🎯 TARGETS — Intentionally Vulnerable"]
-            WEB["vulnerable-web :8080\nDocker socket mounted\nCAP_SYS_ADMIN set"]
-            API["vulnerable-api :5000\nSQL injection · credential exposure"]
-            DB["vulnerable-db :5432\nPostgreSQL · plaintext passwords"]
-            PRIV["privileged-container\nprivileged:true · host fs at /host"]
-        end
-
-        subgraph DETECTION["🛡️ DETECTION"]
-            ML["ml-assessor :5001\nRandom Forest classifier\nMITRE ATT&CK mapping"]
-        end
+flowchart LR
+    subgraph ATTACKER["⚔️ Step 1 — Attack"]
+        ORCH["☠️ attack-orchestrator\n7 container escape scripts\nexposes metrics on :9090"]
     end
 
-    HOST -->|"polls metrics every 3s"| ORCH
-    HOST -->|"reads live container stats"| DOCKER
-    ORCH -->|"escape attempts"| WEB
-    ORCH -->|"escape attempts"| API
-    ORCH -->|"escape attempts"| DB
-    ORCH -->|"escape attempts"| PRIV
-    ORCH -->|"attack events → risk scoring"| ML
+    subgraph TARGETS["🎯 Step 2 — Vulnerable Targets"]
+        WEB["vulnerable-web :8080\nDocker socket mounted\nCAP_SYS_ADMIN"]
+        API["vulnerable-api :5000\nSQL injection\ncredential exposure"]
+        DB["vulnerable-db :5432\nPostgreSQL\nplaintext passwords"]
+        PRIV["privileged-container\nprivileged:true\nhost filesystem at /host"]
+    end
+
+    subgraph DETECTION["🛡️ Step 3 — Detection & Scoring"]
+        ML["ml-assessor :5001\nRandom Forest classifier\nscores each attack\nMITRE ATT&CK mapped"]
+    end
+
+    subgraph DASHBOARD["📊 Step 4 — Visualisation"]
+        HOST["run_dashboard.py\nlocalhost:8888\npolls Docker API + metrics\nauto-refreshes every 3s"]
+    end
+
+    ORCH -->|"container escape attempts"| WEB
+    ORCH -->|"container escape attempts"| API
+    ORCH -->|"container escape attempts"| DB
+    ORCH -->|"container escape attempts"| PRIV
+    ORCH -->|"attack events"| ML
+    ML -->|"risk scores"| HOST
+    ORCH -->|"Prometheus metrics"| HOST
 ```
 
 <p align="center"><em>Figure 1 — System Architecture</em></p>
