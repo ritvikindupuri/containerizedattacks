@@ -1,4 +1,4 @@
-# Container Security Attack & Detection System
+﻿# Container Security Attack & Detection System
 
 A hands-on container security platform that simulates real-world Docker-specific attacks, assesses risk using a machine learning model, and visualizes everything in a live analyst dashboard. Built to demonstrate deep understanding of container threat vectors, Linux primitives, and security tooling.
 
@@ -6,7 +6,7 @@ A hands-on container security platform that simulates real-world Docker-specific
 
 ## Project Description
 
-This system runs 7 container-specific attacks inside an isolated Docker environment — targeting Docker socket exposure, Linux namespace isolation, cgroup resource limits, Linux capabilities, container network topology, image supply chains, and privileged container escape. Each attack is mapped to MITRE ATT&CK, scored by a Random Forest ML classifier, and surfaced in a real-time dashboard that pulls live metrics directly from the Docker daemon.
+This system runs 7 container-specific attacks inside an isolated Docker environment ΓÇö targeting Docker socket exposure, Linux namespace isolation, cgroup resource limits, Linux capabilities, container network topology, image supply chains, and privileged container escape. Each attack is mapped to MITRE ATT&CK, scored by a Random Forest ML classifier, and surfaced in a real-time dashboard that pulls live metrics directly from the Docker daemon.
 
 The dashboard is a standalone Python/Flask server that runs on your machine (not inside Docker), polls the attack orchestrator's Prometheus metrics endpoint every 3 seconds, and re-renders the UI without any page reload.
 
@@ -14,12 +14,12 @@ The dashboard is a standalone Python/Flask server that runs on your machine (not
 
 ## Key Features
 
-- **7 container-specific attacks** — Docker socket escape, privileged container escape, namespace manipulation, resource abuse, network lateral movement, capability abuse, image/registry supply chain attack
-- **Real-time dashboard** — auto-refreshes every 3 seconds, zero page reloads, live Docker container metrics (CPU, memory, network, disk I/O)
-- **ML risk scoring** — Random Forest classifier scores each attack across 5 weighted features; contributions sum exactly to the displayed score
-- **MITRE ATT&CK mapping** — every attack linked to technique IDs (T1611, T1496, T1046, T1525, T1055, T1068) with direct links to attack.mitre.org
-- **Expandable attack detail** — click any row in the dashboard to see attack mechanics, MITRE mapping, and a full risk level breakdown with progress bars
-- **Vulnerable enterprise environment** — e-commerce web app, payment API, PostgreSQL database, and a privileged container as realistic targets
+- **7 container-specific attacks** ΓÇö Docker socket escape, privileged container escape, namespace manipulation, resource abuse, network lateral movement, capability abuse, image/registry supply chain attack
+- **Real-time dashboard** ΓÇö auto-refreshes every 3 seconds, zero page reloads, live Docker container metrics (CPU, memory, network, disk I/O)
+- **ML risk scoring** ΓÇö Random Forest classifier scores each attack across 5 weighted features; contributions sum exactly to the displayed score
+- **MITRE ATT&CK mapping** ΓÇö every attack linked to technique IDs (T1611, T1496, T1046, T1525, T1055, T1068) with direct links to attack.mitre.org
+- **Expandable attack detail** ΓÇö click any row in the dashboard to see attack mechanics, MITRE mapping, and a full risk level breakdown with progress bars
+- **Vulnerable enterprise environment** ΓÇö e-commerce web app, payment API, PostgreSQL database, and a privileged container as realistic targets
 
 ---
 
@@ -27,21 +27,18 @@ The dashboard is a standalone Python/Flask server that runs on your machine (not
 
 ![Container Security Lab Architecture](https://i.imgur.com/Pk7ER0S.png)
 
-<p align="center"><em>Figure 1 — Container Security Lab Architecture</em></p>
+<p align="center"><em>Figure 1 ΓÇö Container Security Lab Architecture</em></p>
 
 
-**Flow 1 — Attack execution:** `attack-orchestrator` runs 7 Python attack scripts sequentially, each targeting a specific container security primitive (Docker socket, Linux namespaces, cgroups, Linux capabilities, container network, image registry, privileged runtime). On completion, each script POSTs its result to the local Prometheus metrics exporter on port 9090.
+**Layer 1 - User Interface:** A single security analyst accesses the dashboard via browser at `localhost:8888`. All interaction flows down through HTTP REST API calls.
 
-**Flow 2 — Metrics export:** The metrics exporter (Flask on port 9090) maintains Prometheus counters for attack type, status, duration, and last-seen timestamp. The dashboard reads these on every poll cycle.
+**Layer 2 - Dashboard (Port 8888):** `run_dashboard.py` is a standalone Flask server running on your host machine. It provides real-time attack visualization, built-in ML risk scoring, MITRE ATT&CK mapping, and live container metrics (CPU, memory, network, disk I/O). The frontend polls `/api/dashboard` every 3 seconds and re-renders without a page reload.
 
-**Flow 3 — Dashboard polling:** `run_dashboard.py` on your host connects to Docker Desktop via the Docker SDK. Every 3 seconds the frontend JS calls `/api/dashboard`, which polls `attack-orchestrator:9090/metrics` for attack results and reads live CPU/memory/network stats directly from each container via the Docker API.
+**Layer 3 - Processing Layer:** The `attack-orchestrator` container (port 9090) is the simulated threat actor. It runs 7 container-specific attack scripts sequentially and exposes results via a Prometheus metrics exporter. Four attacks (Namespace Manipulation, Resource Abuse, Capability Abuse, Image/Registry) execute within the orchestrator itself. Three attacks (Docker Socket Escape, Privileged Container Escape, Network Attacks) reach out to the target containers below.
 
-**Flow 4 — ML scoring:** Risk scoring runs inside `run_dashboard.py` itself using a Random Forest-style weighted feature model. Each attack is scored across 5 features (Privilege Escalation, Host Access, Data Exfiltration, Lateral Movement, Persistence) with fixed weights that sum to 1.0. The final risk score is the exact sum of feature contributions — the math is fully transparent in the dashboard's expand panel.
-
-**Flow 5 — Target containers:** `vulnerable-web`, `vulnerable-api`, `vulnerable-db`, and `privileged-container` are intentionally misconfigured targets. The web app has the Docker socket mounted and `CAP_SYS_ADMIN` set. The privileged container runs with `privileged: true` and the host filesystem mounted at `/host`.
+**Layer 4 - Target Environment:** Four intentionally misconfigured containers sit on the `172.20.0.0/16` isolated bridge network. `vulnerable-web` (port 8080) has the Docker socket mounted and `CAP_SYS_ADMIN` set. `vulnerable-api` (port 5000) exposes SQL injection and credential disclosure endpoints. `privileged-container` runs with `privileged: true` and the host filesystem mounted at `/host`. `vulnerable-db` (port 5432) is a PostgreSQL instance with plaintext passwords.
 
 ---
-
 ## Tech Stack
 
 | Layer | Technology |
@@ -75,13 +72,13 @@ docker --version
 docker compose version
 ```
 
-Both commands must return a version number. If `docker compose` fails, you may have an older install — use `docker-compose` (with hyphen) instead throughout these instructions.
+Both commands must return a version number. If `docker compose` fails, you may have an older install ΓÇö use `docker-compose` (with hyphen) instead throughout these instructions.
 
 **2. Python 3.9+**
 
 The dashboard runs directly on your machine, not inside Docker.
 
-- Windows: https://www.python.org/downloads/ — check "Add Python to PATH" during install
+- Windows: https://www.python.org/downloads/ ΓÇö check "Add Python to PATH" during install
 - macOS: `brew install python` or download from python.org
 - Linux: `sudo apt install python3 python3-pip` (Ubuntu/Debian)
 
@@ -99,7 +96,7 @@ pip --version      # or pip3 --version
 
 ---
 
-### Step 1 — Clone the repository
+### Step 1 ΓÇö Clone the repository
 
 ```bash
 git clone <repository-url>
@@ -110,7 +107,7 @@ Replace `<repository-url>` with the actual GitHub URL and `<repository-folder>` 
 
 ---
 
-### Step 2 — Install dashboard Python dependencies
+### Step 2 ΓÇö Install dashboard Python dependencies
 
 The dashboard (`run_dashboard.py`) runs on your host machine and needs three packages:
 
@@ -129,9 +126,9 @@ You should see `OK`. If you see an import error, re-run the pip install command.
 
 ---
 
-### Step 3 — Build and start all Docker containers
+### Step 3 ΓÇö Build and start all Docker containers
 
-This builds all container images and starts them in the background. The first run downloads base images and installs dependencies — expect 5–10 minutes.
+This builds all container images and starts them in the background. The first run downloads base images and installs dependencies ΓÇö expect 5ΓÇô10 minutes.
 
 ```bash
 docker compose up -d --build
@@ -141,12 +138,12 @@ docker compose up -d --build
 
 Wait for the command to finish. You should see output ending with lines like:
 ```
-✔ Container vulnerable-db        Started
-✔ Container vulnerable-web       Started
-✔ Container vulnerable-api       Started
-✔ Container privileged-container Started
-✔ Container attack-orchestrator  Started
-✔ Container ml-assessor          Started
+Γ£ö Container vulnerable-db        Started
+Γ£ö Container vulnerable-web       Started
+Γ£ö Container vulnerable-api       Started
+Γ£ö Container privileged-container Started
+Γ£ö Container attack-orchestrator  Started
+Γ£ö Container ml-assessor          Started
 ```
 
 Verify all 6 containers are running:
@@ -158,7 +155,7 @@ You should see all 6 containers with status `Up`. If any show `Exited`, see Trou
 
 ---
 
-### Step 4 — Wait for services to initialize
+### Step 4 ΓÇö Wait for services to initialize
 
 The attack orchestrator and ML assessor need ~15 seconds to fully start their internal servers.
 
@@ -185,7 +182,7 @@ If you get a connection error, wait another 10 seconds and try again.
 
 ---
 
-### Step 5 — Start the dashboard
+### Step 5 ΓÇö Start the dashboard
 
 Open a terminal in the project root folder and run:
 
@@ -197,22 +194,22 @@ python run_dashboard.py
 
 You should see:
 ```
-✓ Connected to Docker Desktop
+Γ£ô Connected to Docker Desktop
 ======================================================================
-🛡️  Container Security Dashboard
+≡ƒ¢í∩╕Å  Container Security Dashboard
 ======================================================================
 Dashboard: http://localhost:8888
 ```
 
-Leave this terminal open — the dashboard server must keep running.
+Leave this terminal open ΓÇö the dashboard server must keep running.
 
 Open your browser and go to: **http://localhost:8888**
 
-You will see the dashboard with empty tables and dashes in the stat cards. That is correct — no attacks have run yet.
+You will see the dashboard with empty tables and dashes in the stat cards. That is correct ΓÇö no attacks have run yet.
 
 ---
 
-### Step 6 — Run the attack simulation
+### Step 6 ΓÇö Run the attack simulation
 
 Open a **second terminal** (keep the dashboard terminal running) and execute:
 
@@ -220,7 +217,7 @@ Open a **second terminal** (keep the dashboard terminal running) and execute:
 docker exec attack-orchestrator python3 /attacks/run_all_attacks.py
 ```
 
-This runs all 7 attacks sequentially inside the `attack-orchestrator` container. Each attack prints detailed output. The full simulation takes approximately 2–3 minutes.
+This runs all 7 attacks sequentially inside the `attack-orchestrator` container. Each attack prints detailed output. The full simulation takes approximately 2ΓÇô3 minutes.
 
 You will see output like:
 ```
@@ -228,22 +225,22 @@ CONTAINER ATTACK: Docker Socket Escape
 ...
 ATTACK SUCCESSFUL: Container Escape via Docker Socket
 ...
-[✓] Metrics recorded for Docker Socket Escape
+[Γ£ô] Metrics recorded for Docker Socket Escape
 ```
 
-While the attacks run, switch back to your browser at **http://localhost:8888** — the dashboard will populate with data within 3 seconds of each attack completing, automatically, with no refresh needed.
+While the attacks run, switch back to your browser at **http://localhost:8888** ΓÇö the dashboard will populate with data within 3 seconds of each attack completing, automatically, with no refresh needed.
 
 ---
 
-### Step 7 — Explore the dashboard
+### Step 7 ΓÇö Explore the dashboard
 
 Once all attacks complete you will see:
 
-- **Stats bar** — total attack types, success rate, critical/high risk counts
-- **Attack Distribution** — donut chart with MITRE IDs on each slice
-- **Risk Assessment table** — click any row to expand a 3-column detail panel showing attack mechanics, MITRE ATT&CK links, and the ML risk score breakdown
-- **Affected Infrastructure table** — live CPU/memory metrics per container, with `i` buttons for impact details
-- **Footer** — live dot + last updated timestamp confirming auto-refresh is active
+- **Stats bar** ΓÇö total attack types, success rate, critical/high risk counts
+- **Attack Distribution** ΓÇö donut chart with MITRE IDs on each slice
+- **Risk Assessment table** ΓÇö click any row to expand a 3-column detail panel showing attack mechanics, MITRE ATT&CK links, and the ML risk score breakdown
+- **Affected Infrastructure table** ΓÇö live CPU/memory metrics per container, with `i` buttons for impact details
+- **Footer** ΓÇö live dot + last updated timestamp confirming auto-refresh is active
 
 ---
 
