@@ -27,23 +27,32 @@ The dashboard is a standalone Python/Flask server that runs on your machine (not
 
 ```mermaid
 flowchart TD
-    HOST["🖥️ Your Machine (Host)\npython run_dashboard.py\nlocalhost:8888"]
+    HOST["🖥️ Your Machine\nrun_dashboard.py → localhost:8888\nFlask + Docker SDK"]
 
     subgraph DOCKER["Docker Network — 172.20.0.0/16"]
-        ORCH["☠️ attack-orchestrator\nPort 9090 — Prometheus metrics\nRuns 7 attacks · Records results"]
-        WEB["vulnerable-web\n:8080"]
-        API["vulnerable-api\n:5000"]
-        DB["vulnerable-db\n:5432"]
-        PRIV["privileged-container\nhost fs mounted"]
-        ML["ml-assessor\n:5001 — Random Forest"]
+        subgraph ATTACKER["⚔️ ATTACKER"]
+            ORCH["☠️ attack-orchestrator\n7 container escape scripts\nPrometheus metrics :9090"]
+        end
+
+        subgraph TARGETS["🎯 TARGETS — Intentionally Vulnerable"]
+            WEB["vulnerable-web :8080\nDocker socket mounted\nCAP_SYS_ADMIN set"]
+            API["vulnerable-api :5000\nSQL injection · credential exposure"]
+            DB["vulnerable-db :5432\nPostgreSQL · plaintext passwords"]
+            PRIV["privileged-container\nprivileged:true · host fs at /host"]
+        end
+
+        subgraph DETECTION["🛡️ DETECTION"]
+            ML["ml-assessor :5001\nRandom Forest classifier\nMITRE ATT&CK mapping"]
+        end
     end
 
-    HOST -->|"Docker SDK + HTTP poll"| ORCH
-    ORCH -->|attacks| WEB
-    ORCH -->|attacks| API
-    ORCH -->|attacks| DB
-    ORCH -->|attacks| PRIV
-    ORCH -->|risk scoring| ML
+    HOST -->|"polls metrics every 3s"| ORCH
+    HOST -->|"reads live container stats"| DOCKER
+    ORCH -->|"escape attempts"| WEB
+    ORCH -->|"escape attempts"| API
+    ORCH -->|"escape attempts"| DB
+    ORCH -->|"escape attempts"| PRIV
+    ORCH -->|"attack events → risk scoring"| ML
 ```
 
 <p align="center"><em>Figure 1 — System Architecture</em></p>
