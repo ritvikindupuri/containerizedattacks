@@ -28,7 +28,7 @@ The dashboard is a standalone Python/Flask server that runs on your machine (not
 ```mermaid
 flowchart LR
     subgraph ATTACKER["⚔️ Step 1 — Attack"]
-        ORCH["☠️ attack-orchestrator\n7 container escape scripts\nexposes metrics on :9090"]
+        ORCH["☠️ attack-orchestrator\n7 container escape scripts\nPrometheus metrics on :9090"]
     end
 
     subgraph TARGETS["🎯 Step 2 — Vulnerable Targets"]
@@ -38,32 +38,30 @@ flowchart LR
         PRIV["privileged-container\nprivileged:true\nhost filesystem at /host"]
     end
 
-    subgraph DETECTION["🛡️ Step 3 — Detection & Scoring"]
-        ML["ml-assessor :5001\nRandom Forest classifier\nscores each attack\nMITRE ATT&CK mapped"]
-    end
-
-    subgraph DASHBOARD["📊 Step 4 — Visualisation"]
-        HOST["run_dashboard.py\nlocalhost:8888\npolls Docker API + metrics\nauto-refreshes every 3s"]
+    subgraph DASHBOARD["� Step 3 — Detection & Visualisation"]
+        HOST["run_dashboard.py · localhost:8888\nPolls Prometheus metrics every 3s\nReads live Docker container stats\nRandom Forest ML scoring built-in\nMITRE ATT&CK mapped per attack"]
     end
 
     ORCH -->|"container escape attempts"| WEB
     ORCH -->|"container escape attempts"| API
     ORCH -->|"container escape attempts"| DB
     ORCH -->|"container escape attempts"| PRIV
-    ORCH -->|"attack events"| ML
-    ML -->|"risk scores"| HOST
-    ORCH -->|"Prometheus metrics"| HOST
+    ORCH -->|"Prometheus metrics (:9090)"| HOST
+    WEB -->|"live CPU / memory / network stats"| HOST
+    API -->|"live CPU / memory / network stats"| HOST
+    DB -->|"live CPU / memory / network stats"| HOST
+    PRIV -->|"live CPU / memory / network stats"| HOST
 ```
 
 <p align="center"><em>Figure 1 — System Architecture</em></p>
 
-**Flow 1 — Dashboard polling:** `run_dashboard.py` on your host connects to Docker Desktop via the Docker SDK and polls `attack-orchestrator:9090/metrics` every 3 seconds. The frontend JS re-renders all tables and charts in-place with no page reload.
+**Flow 1 — Attack execution:** `attack-orchestrator` runs 7 Python attack scripts sequentially, each targeting a specific container security primitive (Docker socket, Linux namespaces, cgroups, Linux capabilities, container network, image registry, privileged runtime). On completion, each script POSTs its result to the local Prometheus metrics exporter on port 9090.
 
-**Flow 2 — Attack execution:** `attack-orchestrator` runs 7 Python attack scripts sequentially. Each script targets a specific container security primitive (socket, namespace, cgroup, capability, network, image layer). On completion, each attack POSTs its result to the local Prometheus metrics exporter.
+**Flow 2 — Metrics export:** The metrics exporter (Flask on port 9090) maintains Prometheus counters for attack type, status, duration, and last-seen timestamp. The dashboard reads these on every poll cycle.
 
-**Flow 3 — Metrics export:** The metrics exporter (Flask on port 9090) maintains Prometheus counters for attack type, status, duration, and last-seen timestamp. The dashboard reads these on every poll cycle.
+**Flow 3 — Dashboard polling:** `run_dashboard.py` on your host connects to Docker Desktop via the Docker SDK. Every 3 seconds the frontend JS calls `/api/dashboard`, which polls `attack-orchestrator:9090/metrics` for attack results and reads live CPU/memory/network stats directly from each container via the Docker API.
 
-**Flow 4 — ML scoring:** `ml-assessor` (port 5001) runs a Random Forest classifier that scores each attack across 5 weighted features. The dashboard derives the final risk score directly from the feature sum so the math is always transparent and verifiable.
+**Flow 4 — ML scoring:** Risk scoring runs inside `run_dashboard.py` itself using a Random Forest-style weighted feature model. Each attack is scored across 5 features (Privilege Escalation, Host Access, Data Exfiltration, Lateral Movement, Persistence) with fixed weights that sum to 1.0. The final risk score is the exact sum of feature contributions — the math is fully transparent in the dashboard's expand panel.
 
 **Flow 5 — Target containers:** `vulnerable-web`, `vulnerable-api`, `vulnerable-db`, and `privileged-container` are intentionally misconfigured targets. The web app has the Docker socket mounted and `CAP_SYS_ADMIN` set. The privileged container runs with `privileged: true` and the host filesystem mounted at `/host`.
 
