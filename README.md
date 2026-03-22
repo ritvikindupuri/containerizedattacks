@@ -1,4 +1,4 @@
-﻿# Container Security Attack & Detection System
+# Container Security Attack & Detection System
 
 A hands-on container security platform that simulates real-world Docker-specific attacks, assesses risk using a machine learning model, and visualizes everything in a live analyst dashboard. Built to demonstrate deep understanding of container threat vectors, Linux primitives, and security tooling.
 
@@ -25,33 +25,9 @@ The dashboard is a standalone Python/Flask server that runs on your machine (not
 
 ## Architecture
 
-```mermaid
-flowchart LR
-    subgraph ATTACKER["⚔️ Step 1 — Attack"]
-        ORCH["☠️ attack-orchestrator\n7 container escape scripts\nPrometheus metrics on :9090"]
-    end
+![Container Security Lab Architecture](https://i.imgur.com/Pk7ER0S.png)
 
-    subgraph TARGETS["🎯 Step 2 — Vulnerable Targets"]
-        WEB["vulnerable-web :8080\nDocker socket mounted\nCAP_SYS_ADMIN"]
-        API["vulnerable-api :5000\nSQL injection\ncredential exposure"]
-        DB["vulnerable-db :5432\nPostgreSQL\nplaintext passwords"]
-        PRIV["privileged-container\nprivileged:true\nhost filesystem at /host"]
-    end
-
-    subgraph DASHBOARD["� Step 3 — Detection & Visualisation"]
-        HOST["run_dashboard.py · localhost:8888\nPolls Prometheus metrics every 3s\nReads live Docker container stats\nRandom Forest ML scoring built-in\nMITRE ATT&CK mapped per attack"]
-    end
-
-    ORCH -->|"container escape attempts"| WEB
-    ORCH -->|"container escape attempts"| API
-    ORCH -->|"container escape attempts"| DB
-    ORCH -->|"container escape attempts"| PRIV
-    ORCH -->|"Prometheus metrics (:9090)"| HOST
-    WEB -->|"live CPU / memory / network stats"| HOST
-    API -->|"live CPU / memory / network stats"| HOST
-    DB -->|"live CPU / memory / network stats"| HOST
-    PRIV -->|"live CPU / memory / network stats"| HOST
-```
+<p align="center"><em>Figure 1 — Container Security Lab Architecture</em></p>
 
 <p align="center"><em>Figure 1 — System Architecture</em></p>
 
