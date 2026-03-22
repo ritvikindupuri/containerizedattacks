@@ -1,5 +1,14 @@
 # Container Security Attack & Detection System: Technical Documentation
 
+## Table of Contents
+1. [Executive Summary](#1-executive-summary)
+2. [System Architecture and Data Flows](#2-system-architecture-and-data-flows)
+3. [Machine Learning Risk Assessment Model](#3-machine-learning-risk-assessment-model)
+4. [Infrastructure Code Detail](#4-infrastructure-code-detail)
+5. [Conclusion](#5-conclusion)
+
+---
+
 ## 1. Executive Summary
 
 The Container Security Attack & Detection System is a hands-on, highly specialized platform designed to simulate, detect, and analyze real-world Docker-specific attacks. It operates within an isolated Docker environment, executing seven distinct container escape and manipulation techniques. By targeting critical Linux and container primitives—such as Docker socket exposure, Linux namespace isolation, cgroup resource limits, Linux capabilities, container network topologies, and image supply chains—the system provides a comprehensive emulation of modern container threat vectors.
@@ -8,13 +17,7 @@ Beyond attack simulation, the platform features a real-time detection and visual
 
 Ultimately, this system serves as both an educational tool and a proof-of-concept for robust container security monitoring, demonstrating a deep, applied understanding of container architecture, vulnerabilities, and proactive defense mechanisms.
 
-## 2. Conclusion
-
-The Container Security Attack & Detection System successfully bridges the gap between theoretical vulnerability knowledge and practical, observable exploit execution. By combining a highly vulnerable, realistically configured multi-container application stack with a sophisticated, automated attack orchestrator, it provides an invaluable environment for studying container escapes and lateral movement.
-
-The integration of real-time metrics streaming and a transparent, ML-driven risk scoring engine elevates the platform from a simple attack simulator to a comprehensive security analysis tool. The dashboard’s ability to map raw exploit data to standardized MITRE ATT&CK techniques, alongside granular, feature-weighted risk assessments, ensures that users can not only see *how* an attack occurred but also fully comprehend its potential impact. This documentation serves as the definitive guide to the system’s architecture, its machine learning logic, and the precise infrastructure configurations that make these complex simulations possible.
-
-## 3. System Architecture and Data Flows
+## 2. System Architecture and Data Flows
 
 The architecture of the system is divided into three primary components: the Attacker (Orchestrator), the Vulnerable Targets, and the Detection & Visualization Dashboard. Unlike standard applications, the dashboard operates directly on the host machine, interfacing with the Docker daemon to monitor the isolated container network.
 
@@ -42,7 +45,7 @@ The system relies on asynchronous polling and direct API integrations to maintai
 *   **Flow 5: Real-Time UI Update**
     The aggregated payload—containing the parsed attacks, calculated ML risk scores, MITRE mappings, and live container telemetry—is returned as JSON to the frontend, which dynamically updates the DOM without requiring a page reload.
 
-## 4. Machine Learning Risk Assessment Model
+## 3. Machine Learning Risk Assessment Model
 
 The system utilizes a Machine Learning approach to assess and score the risk of detected container security events. While the dashboard currently uses a deterministic, transparent weighted-feature model for UI rendering, the underlying architecture supports a Random Forest classifier designed to be trained on historical attack telemetry.
 
@@ -164,11 +167,22 @@ class RiskAssessor:
 
 ### Explanation of the ML Model
 
-The `RiskAssessor` is built around `scikit-learn`'s `RandomForestClassifier`.
+The `RiskAssessor` relies heavily on `scikit-learn`'s `RandomForestClassifier` to determine the severity and risk associated with intercepted container telemetry. The process is broken down into three critical phases: Extraction, Training, and Prediction.
 
-1.  **Feature Extraction & Scaling:** When an event is processed, `_prepare_features` translates categorical and numerical data (e.g., presence of the Docker socket, `process_count`, `network_connections`) into a normalized 12-dimensional numerical vector. The `StandardScaler` ensures that high-magnitude continuous variables (like process counts) do not disproportionately dominate boolean flags (like `is_privileged`).
-2.  **Training:** The `train_from_file` method ingests historical JSON event logs. It extracts features (`X`) and assigns binary labels (`y`), where `CRITICAL` or `HIGH` priority events are labeled as `1` (high-risk), and others as `0`. The model is trained using 100 decision trees (`n_estimators=100`) with a maximum depth of 10 (`max_depth=10`) to prevent overfitting. `class_weight='balanced'` ensures the model remains accurate even if high-risk events are rare in the training data.
-3.  **Prediction:** When assessing a live attack, `assess_risk` scales the incoming feature vector and uses `predict_proba`. Instead of returning a hard binary classification, it returns the probability (0.0 to 1.0) that the event belongs to the high-risk class.
+1.  **Feature Extraction & Dimensionality Scaling:**
+    When an event log is processed, the `_prepare_features` function maps raw categorical data and numeric counters into a strict 12-dimensional vector. For example, boolean flags (like `has_docker_socket` and `is_privileged`) are encoded as `1.0` or `0.0`. Numerical features (like `process_count` and `network_connections`) retain their raw float values.
+    Crucially, before feeding this into the model, the data passes through `StandardScaler`. This standardization transforms the data so it has a mean of 0 and standard deviation of 1. This prevents high-magnitude numeric variables (like a fork bomb creating 10,000 processes) from statistically overpowering critical but binary boolean flags (like whether the container has `CAP_SYS_ADMIN` capabilities).
+
+2.  **Model Training Mechanics:**
+    The `train_from_file` method ingests historical JSON event logs to build the model's intelligence. It pulls out features (`X`) and maps them to a binary label (`y`). Events historically marked as `CRITICAL` or `HIGH` are labeled as `1` (representing a high-risk security incident), while all others are `0`.
+    The `RandomForestClassifier` itself is configured with specific hyperparameters tailored for threat hunting:
+    *   `n_estimators=100`: The "forest" is composed of 100 distinct decision trees. This ensemble approach drastically reduces variance and increases accuracy over a single decision tree.
+    *   `max_depth=10`: Each tree is limited to 10 logical splits deep. This acts as a regularization parameter to prevent the model from simply memorizing the training data (overfitting), ensuring it can generalize to novel container attacks.
+    *   `class_weight='balanced'`: In real-world environments, critical security breaches are rare compared to mundane operational logs. This setting mathematically forces the model to heavily penalize misclassifications on the minority class (the high-risk events), preventing the model from becoming biased toward predicting everything as "safe."
+
+3.  **Live Prediction & Probability:**
+    When an incoming attack is assessed via `assess_risk`, its feature vector is extracted and scaled. Instead of calling `.predict()` (which would return a hard `0` or `1`), the code leverages `.predict_proba()`.
+    Because a Random Forest consists of 100 trees, `predict_proba()` calculates the percentage of trees that voted for the high-risk classification. For example, if 85 out of 100 decision trees classify an event as a dangerous container escape, it returns `0.85`. This granular probability float allows the dashboard to place the event accurately into a spectrum (CRITICAL, HIGH, MEDIUM, LOW) rather than a rigid pass/fail boundary.
 
 ### Risk Severity Determination and Scoring Logic
 
@@ -205,12 +219,23 @@ FEATURE_SCORES = {
 
 The base weight distribution—Privilege Escalation (25%), Host Access (25%), Data Exfiltration (20%), Lateral Movement (15%), and Persistence (15%)—is constant across all attacks. This standardizes the evaluation criteria. However, the *Feature Score* (0-100) applied to those weights varies drastically based on the attack type:
 
-*   **Docker Socket & Privileged Escapes**: These receive perfect `100` scores for Privilege Escalation and Host Access. **Why?** Because compromising the Docker socket or escaping a `--privileged` container grants immediate, unrestricted `root` access to the underlying host OS. This is the ultimate compromise, thus heavily weighting the final score to CRITICAL (~91-94 total score).
-*   **Network Attacks**: This receives a low `50` for Privilege Escalation but a near-perfect `95` for Lateral Movement. **Why?** Network reconnaissance and service discovery (T1046) do not inherently grant root privileges; rather, their primary danger lies in allowing an attacker to map the internal microservice architecture and pivot to other containers. The scoring matrix mathematically reflects this specific threat vector.
-*   **Resource Abuse**: This attack receives low scores across the board (e.g., `30` for Privilege Escalation, `25` for Host Access). **Why?** Resource exhaustion (like a fork bomb or memory leak) causes Denial of Service (T1499) but rarely leads to data theft or host compromise. The resulting final score accurately reflects a LOW or MEDIUM risk severity.
-*   **Image & Registry Attacks**: Receives perfect `95` scores for Data Exfiltration and Persistence. **Why?** Implanting malicious code into a base image (T1525) means the threat persists across container restarts and orchestrator deployments. Furthermore, compromised registries often lead to the extraction of embedded secrets, justifying the high exfiltration score.
+#### Docker Socket & Privileged Escapes
+* **Scores:** Receives perfect `100` scores for Privilege Escalation and Host Access.
+* **Why?** Because compromising the Docker socket or escaping a `--privileged` container grants immediate, unrestricted `root` access to the underlying host OS. This is the ultimate compromise, thus heavily weighting the final score to CRITICAL (~91-94 total score).
 
-## 5. Infrastructure Code Detail
+#### Network Attacks
+* **Scores:** Receives a low `50` for Privilege Escalation but a near-perfect `95` for Lateral Movement.
+* **Why?** Network reconnaissance and service discovery (T1046) do not inherently grant root privileges; rather, their primary danger lies in allowing an attacker to map the internal microservice architecture and pivot to other containers. The scoring matrix mathematically reflects this specific threat vector.
+
+#### Resource Abuse
+* **Scores:** This attack receives low scores across the board (e.g., `30` for Privilege Escalation, `25` for Host Access).
+* **Why?** Resource exhaustion (like a fork bomb or memory leak) causes Denial of Service (T1499) but rarely leads to data theft or host compromise. The resulting final score accurately reflects a LOW or MEDIUM risk severity.
+
+#### Image & Registry Attacks
+* **Scores:** Receives perfect `95` scores for Data Exfiltration and Persistence.
+* **Why?** Implanting malicious code into a base image (T1525) means the threat persists across container restarts and orchestrator deployments. Furthermore, compromised registries often lead to the extraction of embedded secrets, justifying the high exfiltration score.
+
+## 4. Infrastructure Code Detail
 
 The system relies on a meticulously configured `docker-compose.yml` to define the target environment and the attack orchestrator. Below is the detailed breakdown of every container and the exact infrastructure code that provisions it.
 
@@ -363,3 +388,9 @@ The `attack-orchestrator` acts as the adversary within the network.
     *   Because it resides on the `attack-net` bridge network, it can perform network scanning and interact with the vulnerable API and database.
     *   As each script executes, it attempts the exploit, measures the outcome (success/failure), calculates the duration, and POSTs the result back to its own background `metrics_exporter.py` service.
     *   The dashboard on the host machine then queries port `9090` to display these attack results in real-time.
+
+## 5. Conclusion
+
+The Container Security Attack & Detection System successfully bridges the gap between theoretical vulnerability knowledge and practical, observable exploit execution. By combining a highly vulnerable, realistically configured multi-container application stack with a sophisticated, automated attack orchestrator, it provides an invaluable environment for studying container escapes and lateral movement.
+
+The integration of real-time metrics streaming and a transparent, ML-driven risk scoring engine elevates the platform from a simple attack simulator to a comprehensive security analysis tool. The dashboard’s ability to map raw exploit data to standardized MITRE ATT&CK techniques, alongside granular, feature-weighted risk assessments, ensures that users can not only see *how* an attack occurred but also fully comprehend its potential impact. This documentation serves as the definitive guide to the system’s architecture, its machine learning logic, and the precise infrastructure configurations that make these complex simulations possible.
