@@ -319,8 +319,28 @@ As seen in Figure 4, the web application provides a realistic attack surface. Be
       - "attack.target=web"
 ```
 
-**Explanation:**
-The most critical vulnerability here is the volume mount: `/var/run/docker.sock:/var/run/docker.sock`. This exposes the host's Docker daemon API to the inside of the container. If an attacker gains shell access to this container, they can use the Docker CLI to spawn a new, fully privileged container that mounts the host's root filesystem, resulting in a total host compromise. Additionally, `cap_add: - SYS_ADMIN` grants the container near-root Linux capabilities, allowing it to perform dangerous system calls (like mounting filesystems) that are normally blocked by default container profiles.
+**Infrastructure Explanation:**
+The most critical infrastructure vulnerability here is the volume mount: `/var/run/docker.sock:/var/run/docker.sock`. This exposes the host's Docker daemon API to the inside of the container. If an attacker gains shell access to this container, they can use the Docker CLI to spawn a new, fully privileged container that mounts the host's root filesystem, resulting in a total host escape. Additionally, `cap_add: - SYS_ADMIN` grants the container near-root Linux capabilities, allowing it to perform dangerous system calls (like mounting filesystems) that are normally blocked by default container profiles.
+
+**Application Code Vulnerability (`app.py`):**
+To achieve the initial shell access required to exploit the Docker socket, the web application code contains an explicit Remote Code Execution (RCE) flaw in its administrative dashboard:
+
+```python
+@app.route('/admin/command', methods=['POST'])
+def admin_command():
+    """Vulnerable command execution"""
+    if 'user_id' not in session:
+        return redirect('/')
+
+    cmd = request.form.get('cmd', '')
+
+    try:
+        # Vulnerable: Command injection
+        output = subprocess.check_output(cmd, shell=True, stderr=subprocess.STDOUT, timeout=5)
+        # ... renders output to dashboard
+```
+
+Because `shell=True` is explicitly set in Python's `subprocess.check_output()`, an attacker can pass arbitrary bash commands via the `cmd` parameter. This application-layer vulnerability is the direct gateway to exploiting the infrastructure-layer Docker socket misconfiguration.
 
 ### Vulnerable API Service (`vulnerable-api`)
 
@@ -342,8 +362,29 @@ This container simulates an internal microservice, acting as the middle tier bet
       - "attack.target=api"
 ```
 
-**Explanation:**
-The primary vulnerability demonstrated here is credential exposure via environment variables (`DATABASE_URL`). If an attacker successfully executes a Server-Side Request Forgery (SSRF) or gains code execution on the web tier, they can often dump the environment variables of adjacent API services. This exposes the plaintext credentials required to access the `vulnerable-db`. It sits on the same internal `attack-net` network, facilitating lateral movement.
+**Infrastructure Explanation:**
+The primary infrastructure vulnerability demonstrated here is credential exposure via environment variables (`DATABASE_URL`). If an attacker successfully executes a Server-Side Request Forgery (SSRF) or gains code execution on the web tier, they can often dump the environment variables of adjacent API services using `/proc/self/environ`. This directly exposes the plaintext credentials (`admin`:`Pr0d_P@ssw0rd_2024!`) required to access the `vulnerable-db`.
+
+**Application Code Vulnerability (`api.py`):**
+In addition to the infrastructure flaw, the API service itself contains a blatant SQL injection vulnerability in its authentication endpoint:
+
+```python
+@app.route('/api/auth/login', methods=['POST'])
+def login():
+    """Customer login endpoint - SQL injection vulnerable"""
+    data = request.get_json()
+    email = data.get('email', '')
+    password = data.get('password', '')
+
+    try:
+        conn = get_db()
+        cur = conn.cursor()
+        # Vulnerable: Direct string formatting SQL injection
+        query = f"SELECT id, email, role, first_name, last_name FROM users WHERE email='{email}' AND password='{password}'"
+        cur.execute(query)
+```
+
+By passing a payload like `' OR '1'='1` into the `email` field, an attacker can bypass authentication entirely. When combined with the environment variable exposure, the API service represents a massive pivot point for lateral movement within the cluster.
 
 ### Vulnerable Database (`vulnerable-db`)
 
@@ -367,8 +408,21 @@ The backend data store, configured insecurely to demonstrate lateral movement ta
       - "attack.target=database"
 ```
 
-**Explanation:**
-This container runs a standard PostgreSQL 13 instance. Like the API, it explicitly hardcodes plaintext credentials in the `environment` block. It also mounts an initialization script (`init-db.sql`) to populate the database with dummy PII (Personally Identifiable Information). In the context of the simulation, this container represents the ultimate target for data exfiltration once an attacker has successfully pivoted through the network.
+**Infrastructure Explanation:**
+This container runs a standard PostgreSQL 13 instance. Like the API, it explicitly hardcodes plaintext credentials in the `environment` block. Crucially, it mounts an initialization script (`init-db.sql`) via the `docker-entrypoint-initdb.d` volume. This script populates the database with dummy Personally Identifiable Information (PII) upon container startup.
+
+**Database Initialization Payload (`init-db.sql`):**
+To accurately simulate a high-value enterprise target for Data Exfiltration (T1048), the database is seeded with thousands of rows of sensitive customer data and fake administrative credentials:
+
+```sql
+-- DEMO ONLY — all passwords and personal data below are fake, for vulnerability demonstration purposes only
+INSERT INTO users (email, password, first_name, last_name, phone, address, city, state, zip_code, credit_card_last4, role, total_orders, total_spent) VALUES
+('john.doe@email.com', 'password123', 'John', 'Doe', '555-0101', '123 Main St', 'New York', 'NY', '10001', '4532', 'customer', 15, 2847.50),
+('jane.smith@email.com', 'pass456', 'Jane', 'Smith', '555-0102', '456 Oak Ave', 'Los Angeles', 'CA', '90001', '5421', 'customer', 8, 1234.75),
+('admin@company.com', 'admin2024', 'Admin', 'User', '555-0001', '1 Corporate Plaza', 'Seattle', 'WA', '98101', NULL, 'admin', 0, 0.00);
+```
+
+In the context of the simulation, this data represents the ultimate objective. An attacker who exploits the web application (Flow 1), retrieves the database credentials from the API's environment variables (Flow 2), and pivots to the database port (Flow 3), can dump this entire `users` table, achieving total data compromise.
 
 ### Privileged Container (`privileged-container`)
 
