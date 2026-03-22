@@ -29,6 +29,7 @@ The dashboard is a standalone Python/Flask server that runs on your machine (not
 
 <p align="center"><em>Figure 1 — Container Security Lab Architecture</em></p>
 
+
 **Flow 1 — Attack execution:** `attack-orchestrator` runs 7 Python attack scripts sequentially, each targeting a specific container security primitive (Docker socket, Linux namespaces, cgroups, Linux capabilities, container network, image registry, privileged runtime). On completion, each script POSTs its result to the local Prometheus metrics exporter on port 9090.
 
 **Flow 2 — Metrics export:** The metrics exporter (Flask on port 9090) maintains Prometheus counters for attack type, status, duration, and last-seen timestamp. The dashboard reads these on every poll cycle.
