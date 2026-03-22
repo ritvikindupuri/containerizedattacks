@@ -23,9 +23,9 @@ The dashboard is a standalone Python/Flask server that runs on your machine (not
 
 ---
 
-## Architecture
+## System Architecture
 
-![Container Security Lab Architecture](https://i.imgur.com/Pk7ER0S.png)
+<p align="center"><img src="https://i.imgur.com/Pk7ER0S.png" alt="System Architecture" width="800"/></p>
 
 <p align="center"><em>Figure 1 ΓÇö Container Security Lab Architecture</em></p>
 
