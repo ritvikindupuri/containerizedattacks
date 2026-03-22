@@ -1,0 +1,107 @@
+version: '3.8'
+
+services:
+  # Vulnerable Web Application
+  vulnerable-web:
+    build: ./vulnerable-apps/web-app
+    container_name: vulnerable-web
+    ports:
+      - "8080:80"
+    environment:
+      - APP_ENV=production
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock  # Intentionally vulnerable
+    cap_add:
+      - SYS_ADMIN  # Intentionally dangerous capability
+    privileged: false
+    networks:
+      - attack-net
+    labels:
+      - "attack.target=web"
+
+  # Vulnerable API Service
+  vulnerable-api:
+    build: ./vulnerable-apps/api-service
+    container_name: vulnerable-api
+    ports:
+      - "5000:5000"
+    environment:
+      - DATABASE_URL=postgresql://admin:Pr0d_P@ssw0rd_2024!@vulnerable-db:5432/appdb  # DEMO ONLY — fake credentials
+    networks:
+      - attack-net
+    depends_on:
+      - vulnerable-db
+    labels:
+      - "attack.target=api"
+
+  # Vulnerable Database
+  vulnerable-db:
+    image: postgres:13-alpine
+    container_name: vulnerable-db
+    environment:
+      - POSTGRES_USER=admin
+      - POSTGRES_PASSWORD=Pr0d_P@ssw0rd_2024!  # DEMO ONLY — fake password for vulnerability demonstration
+      - POSTGRES_DB=appdb
+    ports:
+      - "5432:5432"
+    volumes:
+      - ./vulnerable-apps/init-db.sql:/docker-entrypoint-initdb.d/init.sql
+    networks:
+      - attack-net
+    labels:
+      - "attack.target=database"
+
+  # Privileged Container (for privilege escalation attacks)
+  privileged-container:
+    build: ./vulnerable-apps/privileged-app
+    container_name: privileged-container
+    privileged: true  # Intentionally privileged
+    volumes:
+      - /:/host  # Mount host filesystem
+    networks:
+      - attack-net
+    labels:
+      - "attack.target=privileged"
+
+  # Attack Orchestrator
+  attack-orchestrator:
+    build: ./attacks
+    container_name: attack-orchestrator
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+      - ./attacks:/attacks
+      - ./logs:/logs
+    networks:
+      - attack-net
+    depends_on:
+      - vulnerable-web
+      - vulnerable-api
+      - vulnerable-db
+      - privileged-container
+    command: sh -c "python3 /attacks/metrics_exporter.py & tail -f /dev/null"
+    ports:
+      - "9090:9090"
+
+  # ML Risk Assessor
+  ml-assessor:
+    build: ./ml-model
+    container_name: ml-assessor
+    ports:
+      - "5001:5001"
+    volumes:
+      - ./logs:/logs
+      - ./ml-model:/app
+    networks:
+      - attack-net
+    environment:
+      - ATTACK_LOGS=/logs
+
+
+networks:
+  attack-net:
+    driver: bridge
+    ipam:
+      config:
+        - subnet: 172.20.0.0/16
+
+

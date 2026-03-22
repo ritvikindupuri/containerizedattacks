@@ -1,0 +1,369 @@
+﻿<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Container Security Dashboard v2</title>
+    <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
+    <meta http-equiv="Pragma" content="no-cache">
+    <meta http-equiv="Expires" content="0">
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body { font-family: "Segoe UI", Tahoma, Geneva, Verdana, sans-serif; background: #0d1117; color: #c9d1d9; padding: 24px; min-height: 100vh; }
+        .page { max-width: 1400px; margin: 0 auto; }
+        .stats-bar { display: grid; grid-template-columns: repeat(4,1fr); gap: 16px; margin-bottom: 20px; }
+        .stat-card { background: #161b22; border: 1px solid #21262d; border-radius: 12px; padding: 20px 22px; position: relative; }
+        .stat-icon { font-size: 1.2em; margin-bottom: 12px; color: #8b949e; }
+        .stat-value { font-size: 2.8em; font-weight: 700; color: #f0f6fc; line-height: 1; margin-bottom: 8px; }
+        .stat-card.green .stat-value { color: #3fb950; }
+        .stat-label { color: #8b949e; font-size: 0.88em; }
+        .stat-info-btn { position: absolute; top: 16px; right: 16px; width: 22px; height: 22px; border-radius: 50%; border: 1px solid #30363d; background: transparent; color: #8b949e; font-size: 12px; cursor: pointer; display: flex; align-items: center; justify-content: center; }
+        .stat-info-btn:hover { border-color: #58a6ff; color: #58a6ff; }
+        .main-grid { display: grid; grid-template-columns: 380px 1fr; gap: 16px; margin-bottom: 16px; }
+        .card { background: #161b22; border: 1px solid #21262d; border-radius: 12px; padding: 22px; margin-bottom: 16px; }
+        .card-title { font-size: 1.15em; font-weight: 600; color: #f0f6fc; margin-bottom: 18px; }
+        .leg-row { display: flex; align-items: center; justify-content: space-between; padding: 7px 0; border-bottom: 1px solid #21262d; font-size: 0.85em; }
+        .leg-row:last-child { border-bottom: none; }
+        .leg-left { display: flex; align-items: center; gap: 10px; }
+        .leg-dot { width: 10px; height: 10px; border-radius: 50%; flex-shrink: 0; }
+        .leg-name { color: #c9d1d9; }
+        .leg-right { display: flex; gap: 16px; align-items: center; }
+        .leg-mitre { font-family: "Courier New", monospace; color: #f0883e; font-size: 0.9em; min-width: 42px; }
+        .leg-pct { color: #8b949e; min-width: 38px; text-align: right; }
+        table { width: 100%; border-collapse: collapse; }
+        th { color: #8b949e; font-size: 0.78em; font-weight: 500; padding: 8px 12px; text-align: left; border-bottom: 1px solid #21262d; }
+        td { padding: 14px 12px; border-bottom: 1px solid #21262d; font-size: 0.9em; vertical-align: middle; }
+        tr:last-child td { border-bottom: none; }
+        tr:hover td { background: rgba(88,166,255,0.04); }
+        .atk-row { cursor: pointer; }
+        .atk-row:hover td { background: rgba(88,166,255,0.06); }
+        .chevron { color: #8b949e; font-size: 11px; transition: transform 0.2s; flex-shrink: 0; margin-right: 8px; }
+        .chevron.open { transform: rotate(180deg); }
+        .expand-row td { padding: 0; border-bottom: 1px solid #21262d; }
+        .expand-inner { background: #0d1117; padding: 20px 28px; display: none; border-top: 1px solid #21262d; }
+        .expand-inner.open { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 24px; }
+        .exp-section-title { font-size: 0.72em; font-weight: 700; color: #8b949e; text-transform: uppercase; letter-spacing: 0.08em; margin-bottom: 10px; }
+        .exp-desc { color: #c9d1d9; font-size: 0.85em; line-height: 1.65; }
+        .exp-mitre-id { font-family: "Courier New", monospace; color: #f0883e; font-weight: 700; font-size: 0.88em; margin-bottom: 6px; }
+        .exp-mitre-tactic { color: #8b949e; font-size: 0.82em; margin-bottom: 8px; }
+        .exp-mitre-desc { color: #c9d1d9; font-size: 0.83em; line-height: 1.6; }
+        .feat-row { display: flex; align-items: center; gap: 10px; margin-bottom: 8px; }
+        .feat-label { color: #c9d1d9; font-size: 0.82em; width: 140px; flex-shrink: 0; }
+        .feat-bar-wrap { flex: 1; background: #21262d; border-radius: 3px; height: 6px; overflow: hidden; }
+        .feat-bar { height: 6px; border-radius: 3px; background: #3fb950; }
+        .feat-score { color: #f0f6fc; font-size: 0.82em; font-weight: 700; width: 32px; text-align: right; flex-shrink: 0; }
+        .feat-contrib { color: #58a6ff; font-size: 0.8em; font-weight: 700; width: 52px; text-align: right; flex-shrink: 0; }
+        .feat-contrib-label { color: #8b949e; font-size: 0.75em; width: 52px; text-align: right; flex-shrink: 0; }
+        .risk-formula { margin-top: 10px; padding: 8px 10px; background: #161b22; border-radius: 6px; border: 1px solid #21262d; }
+        .risk-formula-row { display: flex; justify-content: space-between; font-size: 0.8em; padding: 2px 0; }
+        .risk-formula-label { color: #8b949e; }
+        .risk-formula-val { color: #f0f6fc; font-weight: 700; font-family: "Courier New", monospace; }
+        .atk-name { font-weight: 600; color: #f0f6fc; font-size: 0.95em; }
+        .badge { display: inline-block; padding: 3px 9px; border-radius: 4px; font-size: 0.75em; font-weight: 700; }
+        .badge-critical { background: #da3633; color: #fff; }
+        .badge-high { background: #9e6a03; color: #fff; }
+        .badge-medium { background: #5a3e00; color: #e3b341; border: 1px solid #9e6a03; }
+        .badge-low { background: #1a4721; color: #3fb950; border: 1px solid #238636; }
+        .badge-success { background: #1a4721; color: #3fb950; border: 1px solid #238636; }
+        .badge-failed { background: #3d1f1f; color: #f85149; border: 1px solid #da3633; }
+        .ml-val { font-weight: 700; color: #f0f6fc; }
+        .tactic-cell { color: #8b949e; font-size: 0.82em; }
+        code { background: #1a2e1a; padding: 2px 8px; border-radius: 4px; color: #3fb950; font-family: "Courier New", monospace; font-size: 0.82em; border: 1px solid #238636; }
+        .metric-v { color: #58a6ff; font-weight: 600; }
+        .metric-s { color: #8b949e; font-size: 0.78em; }
+        .info-btn { display: inline-flex; align-items: center; justify-content: center; width: 16px; height: 16px; border-radius: 50%; border: 1px solid #30363d; background: transparent; color: #8b949e; font-size: 10px; cursor: pointer; vertical-align: middle; margin-left: 5px; }
+        .info-btn:hover { border-color: #58a6ff; color: #58a6ff; }
+        #tp { display: none; position: fixed; z-index: 99999; background: #1c2128; border: 1px solid #30363d; border-radius: 10px; padding: 16px 18px; max-width: 400px; min-width: 280px; box-shadow: 0 16px 48px rgba(0,0,0,0.9); pointer-events: none; }
+        .ml-title { font-weight: 700; color: #f0f6fc; font-size: 15px; margin-bottom: 6px; }
+        .ml-sub { color: #8b949e; font-size: 13px; margin-bottom: 14px; line-height: 1.5; }
+        .ml-row { display: flex; justify-content: space-between; align-items: baseline; padding: 4px 0; font-family: "Courier New", monospace; font-size: 13px; }
+        .ml-feat { color: #f0f6fc; font-weight: 700; }
+        .ml-calc { color: #8b949e; white-space: nowrap; margin-left: 16px; }
+        .ml-foot { color: #58a6ff; font-size: 12px; margin-top: 14px; }
+        .sr-bold { color: #f0f6fc; font-size: 14px; font-weight: 700; margin-bottom: 14px; line-height: 1.5; display: block; }
+        .sr-text { color: #c9d1d9; font-size: 13.5px; line-height: 1.7; }
+        .imp-name { color: #f0883e; font-weight: 700; font-size: 14px; margin-bottom: 10px; }
+        .imp-desc { color: #c9d1d9; font-size: 13px; line-height: 1.65; }
+        .fail-head { color: #f85149; font-weight: 700; font-size: 14px; margin-bottom: 10px; }
+        .fail-text { color: #c9d1d9; font-size: 13px; line-height: 1.65; margin-bottom: 10px; }
+        .fail-good { color: #3fb950; font-size: 12px; }
+        .footer-bar { text-align: center; color: #484f58; font-size: 0.78em; margin-top: 16px; }
+        .empty { color: #8b949e; text-align: center; padding: 32px; font-size: 0.9em; }
+        .live-dot { display: inline-block; width: 8px; height: 8px; background: #3fb950; border-radius: 50%; margin-right: 6px; animation: pulse 2s infinite; }
+        @keyframes pulse { 0%,100%{opacity:1} 50%{opacity:0.3} }
+    </style>
+</head>
+<body>
+<div id="tp"></div>
+<div class="page">
+    <div class="stats-bar">
+        <div class="stat-card">
+            <div class="stat-icon">&#x1F6E1;&#xFE0F;</div>
+            <div class="stat-value" id="s-total">-</div>
+            <div class="stat-label">Attack Types</div>
+        </div>
+        <div class="stat-card green">
+            <div class="stat-icon">&#x1F3AF;</div>
+            <div class="stat-value" id="s-rate">-%</div>
+            <div class="stat-label">Success Rate</div>
+            <button class="stat-info-btn" id="sr-btn">i</button>
+        </div>
+        <div class="stat-card">
+            <div class="stat-icon">&#x26A0;&#xFE0F;</div>
+            <div class="stat-value" id="s-crit">-</div>
+            <div class="stat-label">Critical Risk</div>
+        </div>
+        <div class="stat-card">
+            <div class="stat-icon">&#x1F4C8;</div>
+            <div class="stat-value" id="s-high">-</div>
+            <div class="stat-label">High Risk</div>
+        </div>
+    </div>
+
+    <div class="main-grid">
+        <div class="card" style="margin-bottom:0;">
+            <div class="card-title">Attack Distribution</div>
+            <div id="donut-wrap" style="display:flex;justify-content:center;margin-bottom:20px;"></div>
+            <div id="donut-legend"></div>
+        </div>
+        <div class="card" style="margin-bottom:0;">
+            <div class="card-title">Risk Assessment</div>
+            <table>
+                <thead><tr><th>Attack Name</th><th>Risk Level</th><th>ML Score</th><th>Status</th><th>MITRE Tactics</th></tr></thead>
+                <tbody id="risk-tbody"><tr><td colspan="5" class="empty">Loading...</td></tr></tbody>
+            </table>
+        </div>
+    </div>
+
+    <div class="card">
+        <div class="card-title">Affected Infrastructure</div>
+        <table>
+            <thead><tr><th>Attack</th><th>Container</th><th>Target</th><th>Impact</th><th>CPU</th><th>Memory</th></tr></thead>
+            <tbody id="infra-tbody"><tr><td colspan="6" class="empty">Loading...</td></tr></tbody>
+        </table>
+    </div>
+
+    <div class="footer-bar"><span class="live-dot"></span>Live &nbsp;|&nbsp; Last updated: <span id="last-update">-</span> &nbsp;|&nbsp; Auto-refreshing every 3s</div>
+</div>
+
+<script>
+var COLORS = ["#ef4444","#f97316","#eab308","#22c55e","#3b82f6","#a855f7","#ec4899"];
+var tp = document.getElementById("tp");
+var currentData = null;
+var expandedIdx = null;
+
+// ── Tooltip engine ────────────────────────────────────────────────────────────
+function posTP(btn) {
+    var r = btn.getBoundingClientRect(), pw = 400;
+    var left = r.right + 14, top = r.top;
+    if (left + pw > window.innerWidth - 10) left = r.left - pw - 14;
+    if (top + 360 > window.innerHeight - 10) top = window.innerHeight - 370;
+    if (top < 10) top = 10;
+    tp.style.left = left + "px"; tp.style.top = top + "px";
+}
+function showTP(btn, html) { tp.innerHTML = html; tp.style.display = "block"; posTP(btn); }
+document.addEventListener("click", function(e) {
+    if (!e.target.classList.contains("info-btn") && !e.target.classList.contains("stat-info-btn")) tp.style.display = "none";
+});
+
+// ── Tooltip content builders ──────────────────────────────────────────────────
+function mlHTML(ml) {
+    var rows = (ml.features||[]).map(function(f) {
+        return "<div class='ml-row'><span class='ml-feat'>"+f.name+"</span><span class='ml-calc'>"+f.score+" &times; "+f.weight+" = "+f.contribution+"</span></div>";
+    }).join("");
+    return "<div class='ml-title'>ML Risk Score: "+ml.score+"%</div><div class='ml-sub'>Random Forest classifier score based on "+(ml.features||[]).length+" weighted features:</div>"+rows+"<div class='ml-foot'>Click row for full breakdown</div>";
+}
+function srHTML(rate, total) {
+    var ok = Math.round(total * rate / 100), blocked = total - ok;
+    var msg = rate >= 70 ? "Successful attacks bypassed container security controls. Failed attacks were stopped by isolation mechanisms like cgroups, namespaces, or capability restrictions."
+        : rate >= 40 ? "Mixed results. Some security controls are working, but significant gaps remain in container isolation."
+        : "Strong security posture. Most attacks were blocked by container isolation mechanisms.";
+    return "<span class='sr-bold'>"+ok+" of "+total+" attacks succeeded ("+blocked+" blocked).</span><span class='sr-text'>"+msg+"</span>";
+}
+function failHTML(reason) {
+    return "<div class='fail-head'>Why Attack Failed</div><div class='fail-text'>"+reason+"</div><div class='fail-good'>Security control working as intended.</div>";
+}
+function impactHTML(name, target) {
+    return "<div class='imp-name'>"+name+"</div><div class='imp-desc'>Exploits "+target+" to communicate with the Docker daemon, enabling full host control including spawning privileged containers and accessing host filesystem.</div>";
+}
+
+// ── Donut chart builder ───────────────────────────────────────────────────────
+function buildDonut(attacks, total) {
+    if (!attacks || attacks.length === 0) {
+        document.getElementById("donut-wrap").innerHTML = "<p class='empty'>No attack data yet.</p>";
+        document.getElementById("donut-legend").innerHTML = "";
+        return;
+    }
+    var cx=160, cy=160, outerR=150, innerR=78, labelR=112;
+    var n = attacks.length, startAngle = 0;
+    var paths = "", labels = "";
+    var font = "Segoe UI,Tahoma,Geneva,Verdana,sans-serif";
+    attacks.forEach(function(atk, idx) {
+        var angleSize = 360.0 / n;
+        var endAngle = startAngle + angleSize;
+        var midAngle = startAngle + angleSize / 2;
+        var sRad = (startAngle - 90) * Math.PI / 180;
+        var eRad = (endAngle - 90) * Math.PI / 180;
+        var mRad = (midAngle - 90) * Math.PI / 180;
+        var x1 = cx + outerR * Math.cos(sRad), y1 = cy + outerR * Math.sin(sRad);
+        var x2 = cx + outerR * Math.cos(eRad), y2 = cy + outerR * Math.sin(eRad);
+        var lx = cx + labelR * Math.cos(mRad), ly = cy + labelR * Math.sin(mRad);
+        var large = angleSize > 180 ? 1 : 0;
+        var color = COLORS[idx % COLORS.length];
+        var pct = (100.0 / n).toFixed(1);
+        paths += "<path d='M "+cx+" "+cy+" L "+x1.toFixed(1)+" "+y1.toFixed(1)+" A "+outerR+" "+outerR+" 0 "+large+" 1 "+x2.toFixed(1)+" "+y2.toFixed(1)+" Z' fill='"+color+"' stroke='#0d1117' stroke-width='3'/>";
+        labels += "<text x='"+lx.toFixed(1)+"' y='"+(ly-8).toFixed(1)+"' text-anchor='middle' dominant-baseline='middle' fill='#fff' font-size='12' font-weight='700' font-family='"+font+"' stroke='#000' stroke-width='3' paint-order='stroke'>"+atk.mitre_id+"</text>";
+        labels += "<text x='"+lx.toFixed(1)+"' y='"+(ly+9).toFixed(1)+"' text-anchor='middle' dominant-baseline='middle' fill='#fff' font-size='11' font-family='"+font+"' stroke='#000' stroke-width='3' paint-order='stroke'>"+pct+"%</text>";
+        startAngle = endAngle;
+    });
+    var svg = "<svg viewBox='0 0 320 320' width='300' height='300' xmlns='http://www.w3.org/2000/svg'>"+paths+"<circle cx='160' cy='160' r='"+innerR+"' fill='#0d1117'/><text x='160' y='150' text-anchor='middle' fill='#f0f6fc' font-size='46' font-weight='700' font-family='"+font+"'>"+total+"</text><text x='160' y='173' text-anchor='middle' fill='#8b949e' font-size='13' letter-spacing='2' font-family='"+font+"'>ATTACKS</text>"+labels+"</svg>";
+    document.getElementById("donut-wrap").innerHTML = svg;
+
+    var legend = attacks.map(function(atk, idx) {
+        var color = COLORS[idx % COLORS.length];
+        var pct = (100.0 / attacks.length).toFixed(1);
+        return "<div class='leg-row'><div class='leg-left'><div class='leg-dot' style='background:"+color+";'></div><span class='leg-name'>"+atk.name+"</span></div><div class='leg-right'><span class='leg-mitre'>"+atk.mitre_id+"</span><span class='leg-pct'>"+pct+"%</span></div></div>";
+    }).join("");
+    document.getElementById("donut-legend").innerHTML = legend;
+}
+
+// ── Expand panel builder ──────────────────────────────────────────────────────
+var MITRE_DETAIL = {
+    "docker_socket_escape":        { id: "T1611", url: "https://attack.mitre.org/techniques/T1611/", name: "Escape to Host", tactics: "Privilege Escalation, Defense Evasion", desc: "Attacker mounts the Docker socket (/var/run/docker.sock) to communicate directly with the Docker daemon, spawning privileged containers with full host filesystem access. Bypasses all container isolation boundaries." },
+    "privileged_container_escape": { id: "T1611", url: "https://attack.mitre.org/techniques/T1611/", name: "Escape to Host", tactics: "Privilege Escalation", desc: "The --privileged flag disables all Linux security mechanisms (seccomp, AppArmor, capabilities). Attacker can mount host devices, access cgroups, and achieve full host compromise." },
+    "namespace_manipulation":      { id: "T1611 / T1055", url: "https://attack.mitre.org/techniques/T1611/", url2: "https://attack.mitre.org/techniques/T1055/", name: "Escape to Host / Process Injection", tactics: "Privilege Escalation, Defense Evasion", desc: "Exploits Linux namespace isolation by accessing /proc/1/root (host filesystem) and using nsenter to join host namespaces. Breaks PID, mount, and network isolation." },
+    "resource_abuse":              { id: "T1496 / T1499", url: "https://attack.mitre.org/techniques/T1496/", url2: "https://attack.mitre.org/techniques/T1499/", name: "Resource Hijacking / Endpoint DoS", tactics: "Impact", desc: "Fork bombs exhaust the PID namespace, memory allocation saturates cgroup limits, and disk I/O floods the container filesystem. Can cause host-level resource starvation." },
+    "network_attacks":             { id: "T1046 / T1021", url: "https://attack.mitre.org/techniques/T1046/", url2: "https://attack.mitre.org/techniques/T1021/", name: "Network Service Discovery / Remote Services", tactics: "Discovery, Lateral Movement", desc: "Scans the container network to enumerate services, discovers other containers via DNS, and performs container-to-container lateral movement exploiting flat network topology." },
+    "capability_abuse":            { id: "T1611 / T1068", url: "https://attack.mitre.org/techniques/T1611/", url2: "https://attack.mitre.org/techniques/T1068/", name: "Escape to Host / Privilege Escalation", tactics: "Privilege Escalation, Defense Evasion", desc: "Dangerous Linux capabilities (CAP_SYS_ADMIN, CAP_SYS_PTRACE, CAP_NET_ADMIN) allow mounting filesystems, attaching to processes, and manipulating network interfaces — effectively granting root-equivalent access." },
+    "image_registry":              { id: "T1525 / T1552.001", url: "https://attack.mitre.org/techniques/T1525/", url2: "https://attack.mitre.org/techniques/T1552/001/", name: "Implant Internal Image / Credentials In Files", tactics: "Initial Access, Persistence", desc: "Extracts secrets embedded in image layers, harvests registry credentials from ~/.docker/config.json, and demonstrates ability to push backdoored images — compromising the entire supply chain." }
+};
+var RISK_THRESHOLDS = { CRITICAL: 80, HIGH: 60, MEDIUM: 40, LOW: 0 };
+
+function buildExpandPanel(a) {
+    var m = MITRE_DETAIL[a.type] || { id: a.mitre_id, name: "Unknown", tactics: a.mitre_tactics, desc: a.severity_reason };
+
+    // Column 1: Attack detail
+    var col1 = "<div class='exp-section-title'>Attack Detail</div><div class='exp-desc'>"+m.desc+"</div>";
+
+    // Column 2: MITRE mapping
+    var ids = m.id.split(" / ");
+    var urls = [m.url, m.url2].filter(Boolean);
+    var idLinks = ids.map(function(id, i) {
+        var u = urls[i] || urls[0];
+        return "<a href='"+u+"' target='_blank' rel='noopener' style='color:#f0883e;font-family:\"Courier New\",monospace;font-weight:700;font-size:0.88em;text-decoration:none;border-bottom:1px solid #f0883e44;'>"+id.trim()+"</a>";
+    }).join("<span style='color:#8b949e;margin:0 4px;'>/</span>");
+    var col2 = "<div class='exp-section-title'>MITRE ATT&amp;CK Mapping</div>"
+        + "<div style='margin-bottom:6px;'>"+idLinks+"</div>"
+        + "<div class='exp-mitre-tactic'>Tactics: "+m.tactics+"</div>"
+        + "<div class='exp-mitre-desc'>Technique: "+m.name+"</div>"
+        + "<div style='margin-top:10px;'><a href='"+(m.url||'https://attack.mitre.org')+"' target='_blank' rel='noopener' style='color:#58a6ff;font-size:0.8em;text-decoration:none;'>View on MITRE ATT&amp;CK &#8599;</a></div>";
+
+    // Column 3: Risk level determination
+    var feats = (a.ml_data && a.ml_data.features) || [];
+    var featRows = feats.map(function(f) {
+        return "<div class='feat-row'><span class='feat-label'>"+f.name+"</span><div class='feat-bar-wrap'><div class='feat-bar' style='width:"+f.score+"%'></div></div><span class='feat-score'>"+f.score+"%</span><span class='feat-contrib'>+"+f.contribution.toFixed(1)+"</span></div>";
+    }).join("");
+    var threshold = a.risk_level === "CRITICAL" ? "≥80" : a.risk_level === "HIGH" ? "60–79" : a.risk_level === "MEDIUM" ? "40–59" : "<40";
+    var col3 = "<div class='exp-section-title'>Risk Level Determination</div>"
+        + "<div style='display:flex;gap:10px;margin-bottom:6px;padding-bottom:4px;border-bottom:1px solid #21262d;'>"
+        + "<span style='color:#8b949e;font-size:0.75em;width:140px;flex-shrink:0;'>Feature</span>"
+        + "<span style='flex:1;'></span>"
+        + "<span style='color:#8b949e;font-size:0.75em;width:32px;text-align:right;flex-shrink:0;'>Score</span>"
+        + "<span style='color:#8b949e;font-size:0.75em;width:52px;text-align:right;flex-shrink:0;'>Adds</span>"
+        + "</div>"
+        + featRows
+        + "<div class='risk-formula'>"
+        + "<div class='risk-formula-row'><span class='risk-formula-label'>Sum of contributions</span><span class='risk-formula-val' style='color:#58a6ff;'>"+a.risk_score+"%</span></div>"
+        + "<div class='risk-formula-row'><span class='risk-formula-label'>"+a.risk_level+" = score "+threshold+"%</span><span class='risk-formula-val'><span class='badge badge-"+a.risk_level.toLowerCase()+"'>"+a.risk_level+"</span></span></div>"
+        + "</div>";
+
+    return "<div>"+col1+"</div><div>"+col2+"</div><div>"+col3+"</div>";
+}
+
+// ── Risk table builder ────────────────────────────────────────────────────────
+function buildRiskTable(attacks) {
+    if (!attacks || attacks.length === 0) {
+        document.getElementById("risk-tbody").innerHTML = "<tr><td colspan='5' class='empty'>No attacks detected yet. Run docker exec attack-orchestrator python3 /attacks/run_all_attacks.py</td></tr>";
+        return;
+    }
+    var html = "";
+    attacks.forEach(function(a, idx) {
+        var mlBtn = "<button class='info-btn' data-action='ml' data-idx='"+idx+"'>i</button>";
+        var failBtn = a.status === "failed" && a.failure_reason ? "<button class='info-btn' data-action='fail' data-idx='"+idx+"'>i</button>" : "";
+        var isOpen = expandedIdx === idx;
+        html += "<tr class='atk-row' data-idx='"+idx+"'>";
+        html += "<td><span class='chevron"+(isOpen?" open":"")+"'>&#9660;</span><span class='atk-name'>"+a.name+"</span></td>";
+        html += "<td><span class='badge badge-"+a.risk_level.toLowerCase()+"'>"+a.risk_level+"</span></td>";
+        html += "<td><span class='ml-val'>"+a.risk_score+"%</span>"+mlBtn+"</td>";
+        html += "<td><span class='badge badge-"+a.status+"'>"+a.status.toUpperCase()+"</span>"+failBtn+"</td>";
+        html += "<td class='tactic-cell'>"+a.mitre_tactics+"</td>";
+        html += "</tr>";
+        html += "<tr class='expand-row'><td colspan='5'><div class='expand-inner"+(isOpen?" open":"")+"'>"+buildExpandPanel(a)+"</div></td></tr>";
+    });
+    document.getElementById("risk-tbody").innerHTML = html;
+}
+
+// ── Infra table builder ───────────────────────────────────────────────────────
+function buildInfraTable(infra) {
+    if (!infra || infra.length === 0) {
+        document.getElementById("infra-tbody").innerHTML = "<tr><td colspan='6' class='empty'>No infrastructure data yet.</td></tr>";
+        return;
+    }
+    var rows = infra.map(function(inf, idx) {
+        var impBtn = "<button class='info-btn' data-action='impact' data-idx='"+idx+"'>i</button>";
+        var cpu = inf.metrics ? inf.metrics.cpu_percent+"%" : "-";
+        var mem = inf.metrics ? "<span class='metric-v'>"+inf.metrics.memory_usage_mb+"MB</span> <span class='metric-s'>("+inf.metrics.memory_percent+"%)</span>" : "-";
+        return "<tr><td>"+inf.attack_name+impBtn+"</td><td><code>"+inf.container+"</code></td><td><strong style='color:#f0f6fc;'>"+inf.target_component+"</strong><br><span style='color:#8b949e;font-size:0.8em;'>"+inf.specific_target+"</span></td><td style='color:#8b949e;font-size:0.85em;'>"+inf.impact_description+"</td><td class='metric-v'>"+cpu+"</td><td>"+mem+"</td></tr>";
+    }).join("");
+    document.getElementById("infra-tbody").innerHTML = rows;
+}
+
+// ── Delegated click handler ───────────────────────────────────────────────────
+document.addEventListener("click", function(e) {
+    var btn = e.target.closest(".info-btn");
+    if (btn && currentData) {
+        e.stopPropagation();
+        var action = btn.getAttribute("data-action");
+        var idx = parseInt(btn.getAttribute("data-idx"));
+        if (action === "ml") showTP(btn, mlHTML(currentData.attacks[idx].ml_data));
+        else if (action === "fail") showTP(btn, failHTML(currentData.attacks[idx].failure_reason));
+        else if (action === "impact") { var inf = currentData.infrastructure[idx]; showTP(btn, impactHTML(inf.attack_name, inf.specific_target)); }
+        return;
+    }
+    var row = e.target.closest(".atk-row");
+    if (row) {
+        var idx = parseInt(row.getAttribute("data-idx"));
+        expandedIdx = expandedIdx === idx ? null : idx;
+        if (currentData) buildRiskTable(currentData.attacks);
+        return;
+    }
+    if (!e.target.classList.contains("stat-info-btn")) tp.style.display = "none";
+});
+
+document.getElementById("sr-btn").addEventListener("click", function(e) {
+    if (currentData) showTP(e.target, srHTML(currentData.success_rate, currentData.total_attacks));
+});
+
+// ── Fetch and render ──────────────────────────────────────────────────────────
+function refresh() {
+    fetch("/api/dashboard")
+        .then(function(r) { return r.json(); })
+        .then(function(data) {
+            currentData = data;
+            document.getElementById("s-total").textContent = data.total_attacks;
+            document.getElementById("s-rate").textContent = data.success_rate + "%";
+            document.getElementById("s-crit").textContent = data.risk_distribution.CRITICAL;
+            document.getElementById("s-high").textContent = data.risk_distribution.HIGH;
+            document.getElementById("last-update").textContent = data.last_update;
+            buildDonut(data.attacks, data.total_attacks);
+            buildRiskTable(data.attacks);
+            buildInfraTable(data.infrastructure);
+        })
+        .catch(function(e) { console.error("Refresh error:", e); });
+}
+
+refresh();
+setInterval(refresh, 3000);
+</script>
+</body>
+</html>
