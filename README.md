@@ -27,7 +27,7 @@ The dashboard is a standalone Python/Flask server that runs on your machine (not
 
 <p align="center"><img src="https://i.imgur.com/Pk7ER0S.png" alt="System Architecture" width="800"/></p>
 
-<p align="center"><em>Figure 1 ΓÇö Container Security Lab Architecture</em></p>
+<p align="center"><em>Figure 1 - System Architecture</em></p>
 
 
 **Layer 1 - User Interface:** A single security analyst accesses the dashboard via browser at `localhost:8888`. All interaction flows down through HTTP REST API calls.
