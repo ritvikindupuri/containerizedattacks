@@ -8,6 +8,11 @@
 
 ## 1. Executive Summary
 
+<p align="center">
+  <img src="https://imgur.com/72sw3lt.png" alt="Security Dashboard Capture" width="1000"/>
+</p>
+<p align="center"><em>Figure 1: Security Dashboard capture during the incident</em></p>
+
 At approximately 14:00 UTC, the Container Security Attack & Detection System detected a coordinated, multi-stage attack against the isolated `attack-net` container network. The threat actor successfully executed **6 out of 7** attempted container-specific attacks, achieving an **85.7% success rate**. The attack campaign resulted in **5 Critical Risk** events and **1 High Risk** event. The primary objectives of the attack appeared to be comprehensive host compromise, privilege escalation, and lateral movement across the containerized infrastructure.
 
 The most critical successful exploits included a **Docker Socket Escape (91% ML Score)** and a **Privileged Container Escape (96% ML Score)**, both of which granted the attacker full, unmitigated `root` access to the underlying Docker host. Immediate remediation and isolation of the affected infrastructure are required.
