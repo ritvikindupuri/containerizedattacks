@@ -247,6 +247,68 @@ The severity level is then determined by strict thresholds:
 *   **MEDIUM**: Score ≥ 40
 *   **LOW**: Score < 40
 
+
+### Static Rule vs. Weighted Feature Model Scoring
+
+While the ML model provides a nuanced, probabilistic assessment using a Random Forest classifier, the system also implements a static rule-based fallback mechanism (`_rule_based_score` in `risk_assessor.py`) to ensure resilience if the ML model is unavailable or uninitialized. Comparing the two approaches highlights the value of the weighted feature model in providing accurate, context-aware risk assessments.
+
+#### Static Rule-Based Scoring (The Fallback)
+
+The static rule-based approach assigns hardcoded score penalties based on the presence of specific keywords in the event rule and binary container configuration flags.
+
+```python
+def _rule_based_score(self, features):
+    score = 0.0
+
+    # Priority-based base scoring
+    priority_scores = {'CRITICAL': 0.9, 'HIGH': 0.7, 'MEDIUM': 0.5, 'LOW': 0.3, 'NOTICE': 0.1}
+    score += priority_scores.get(features.get('priority', 'MEDIUM'), 0.5)
+
+    # Keyword-based penalty additions
+    rule = features.get('rule', '').lower()
+    if 'escape' in rule or 'privileged' in rule: score += 0.3
+    elif 'namespace' in rule or 'cgroup' in rule: score += 0.25
+    elif 'capability' in rule or 'privilege' in rule: score += 0.2
+    elif 'network' in rule or 'scanning' in rule: score += 0.15
+
+    # Binary configuration flags
+    if features.get('is_privileged', False): score += 0.2
+    if features.get('has_docker_socket', False): score += 0.25
+
+    return min(score, 1.0)
+```
+
+**Limitations of the Static Approach:**
+1.  **Additive Inflation:** A container with multiple risk factors (e.g., `priority='HIGH'` [0.7], rule contains `'escape'` [0.3], and `has_docker_socket=True` [0.25]) quickly exceeds `1.0`. The `min(score, 1.0)` cap artificially flattens the severity curve, making it difficult to distinguish between a "bad" attack and an "apocalyptic" one; both just score `1.0` (CRITICAL).
+2.  **Lack of Contextual Nuance:** The static rule treats all occurrences of the word "network" identically (+0.15), regardless of whether it's a benign internal DNS lookup or an aggressive nmap sweep across the cluster.
+3.  **Rigid Feature Independence:** It fails to understand the compounding danger of combined features. A container with the Docker socket mounted (`has_docker_socket=True`) is dangerous, but if that same container also has `is_privileged=True`, the combined risk is exponentially higher than simply adding `0.25 + 0.2`. The static model only adds them linearly.
+
+#### Weighted Feature Model Scoring (The Active System)
+
+The active system, driven by the ML model's probabilities and translated via the `FEATURE_SCORES` matrix in the dashboard, solves these limitations by distributing exactly 100% of the risk across five standardized tactical pillars: Privilege Escalation (25%), Host Access (25%), Data Exfiltration (20%), Lateral Movement (15%), and Persistence (15%).
+
+**Comparison Example: Docker Socket Escape**
+
+Let's evaluate a "Docker Socket Escape" attack using both methods.
+
+*   **Static Rule Score:**
+    *   Base Priority (CRITICAL): `0.9`
+    *   Rule contains 'escape': `+0.3`
+    *   Has Docker Socket: `+0.25`
+    *   *Total Calculation:* `0.9 + 0.3 + 0.25 = 1.45`
+    *   *Final Score:* **1.0 (100% - Capped)**. It hits the ceiling immediately.
+
+*   **Weighted Feature Model Score (from Dashboard `FEATURE_SCORES`):**
+    *   Privilege Escalation: `100 score × 0.25 weight = 25.0`
+    *   Host Access: `100 score × 0.25 weight = 25.0`
+    *   Data Exfiltration: `85 score × 0.20 weight = 17.0`
+    *   Lateral Movement: `70 score × 0.15 weight = 10.5`
+    *   Persistence: `90 score × 0.15 weight = 13.5`
+    *   *Final Score:* **91.0% (CRITICAL)**.
+
+**Why the Weighted Model is Superior:**
+The weighted model correctly identifies the Docker Socket Escape as a CRITICAL threat (91.0%), but it doesn't artificially cap it at 100%. This leaves room at the top of the scale (the remaining 9%) for even more devastating combinations, providing analysts with a true gradient of severity rather than a binary "bad/not bad" assessment. Furthermore, the weighted model explicitly explains *why* the score is high: it maxed out Privilege Escalation and Host Access, but scored slightly lower on Lateral Movement, giving the analyst immediate tactical context that a single additive float (`1.0`) completely lacks.
+
 ### Feature Weights and Rationale
 
 The system evaluates five distinct features for every attack. The weights attached to these features total exactly 1.0 (100%), ensuring the final score maps perfectly to a 0-100 scale. The weights vary depending on the specific attack type to accurately reflect the nature of the exploit.
