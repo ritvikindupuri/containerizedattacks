@@ -39,6 +39,56 @@ The dashboard is a standalone Python/Flask server that runs on your machine (not
 **Layer 4 - Target Environment:** Four intentionally misconfigured containers sit on the `172.20.0.0/16` isolated bridge network. `vulnerable-web` (port 8080) has the Docker socket mounted and `CAP_SYS_ADMIN` set. `vulnerable-api` (port 5000) exposes SQL injection and credential disclosure endpoints. `privileged-container` runs with `privileged: true` and the host filesystem mounted at `/host`. `vulnerable-db` (port 5432) is a PostgreSQL instance with plaintext passwords.
 
 ---
+---
+
+## Detection Walkthrough
+
+The following is an end-to-end detection story for the Docker Socket Escape attack, the highest-severity attack in this lab.
+
+---
+
+### Stage 1 - Attack Execution
+
+The attacker container runs `1_docker_socket_escape.py`. Because `vulnerable-web` has `/var/run/docker.sock` mounted as a volume, the script connects directly to the Docker daemon from inside the container and spawns a new privileged container with the host filesystem at `/host` -- a full container escape via the Docker API.
+
+---
+
+### Stage 2 - Telemetry Collection
+
+On completion, `run_all_attacks.py` POSTs the result to the Prometheus metrics exporter on port 9090. Three metrics are recorded: `attack_total` (incremented), `attack_duration_seconds` (elapsed time), and `attack_last_seen_seconds` (Unix timestamp).
+
+---
+
+### Stage 3 - Detection and Alert
+
+Every 3 seconds the dashboard polls `attack-orchestrator:9090/metrics`. The moment `docker_socket_escape` appears with `status=success`, it surfaces as CRITICAL in the Risk Assessment table.
+
+| Feature | Score | Weight | Contribution |
+|---|---|---|---|
+| Privilege Escalation | 100 | 0.25 | 25.0 |
+| Host Access | 100 | 0.25 | 25.0 |
+| Data Exfiltration | 85 | 0.20 | 17.0 |
+| Lateral Movement | 70 | 0.15 | 10.5 |
+| Persistence | 90 | 0.15 | 13.5 |
+| **Total** | | | **91.0 / 100 - CRITICAL** |
+
+---
+
+### Stage 4 - MITRE ATT&CK Mapping
+
+Automatically mapped to **T1611 - Escape to Host** (Privilege Escalation, Defense Evasion). The dashboard expand panel links directly to `https://attack.mitre.org/techniques/T1611/` for immediate technique cross-reference.
+
+---
+
+### Stage 5 - Analyst Response
+
+1. **Immediate**: Remove `/var/run/docker.sock` volume mount from `vulnerable-web`.
+2. **Audit**: Run `docker inspect --format='{{.HostConfig.Binds}}' ` to find all socket mounts.
+3. **Hardening**: Enforce admission policy (OPA/Gatekeeper) blocking container specs with Docker socket mounts.
+4. **Detection rule**: Alert on any process inside a container opening `/var/run/docker.sock` -- this should never occur in production.
+
+---
+
 ## Tech Stack
 
 | Layer | Technology |
