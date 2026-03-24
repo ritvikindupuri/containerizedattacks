@@ -65,6 +65,8 @@ flowchart LR
 
 **Flow 5 — Target containers:** `vulnerable-web`, `vulnerable-api`, `vulnerable-db`, and `privileged-container` are intentionally misconfigured targets. The web app has the Docker socket mounted and `CAP_SYS_ADMIN` set. The privileged container runs with `privileged: true` and the host filesystem mounted at `/host`.
 
+> **📖 Deep Dive:** For a comprehensive, step-by-step explanation of the Machine Learning scoring logic, feature weights, and a complete breakdown of the specific infrastructure and application-layer vulnerabilities, please read the [Technical Documentation](technical_documentation.md).
+
 ---
 
 ## Tech Stack
