@@ -6,7 +6,7 @@ A hands-on container security platform that simulates real-world Docker-specific
 
 ## Project Description
 
-This system runs 7 container-specific attacks inside an isolated Docker environment ΓÇö targeting Docker socket exposure, Linux namespace isolation, cgroup resource limits, Linux capabilities, container network topology, image supply chains, and privileged container escape. Each attack is mapped to MITRE ATT&CK, scored by a Random Forest ML classifier, and surfaced in a real-time dashboard that pulls live metrics directly from the Docker daemon.
+This system runs 7 container-specific attacks inside an isolated Docker environment targeting Docker socket exposure, Linux namespace isolation, cgroup resource limits, Linux capabilities, container network topology, image supply chains, and privileged container escape. Each attack is mapped to MITRE ATT&CK, scored by a Random Forest ML classifier, and surfaced in a real-time dashboard that pulls live metrics directly from the Docker daemon.
 
 The dashboard is a standalone Python/Flask server that runs on your machine (not inside Docker), polls the attack orchestrator's Prometheus metrics endpoint every 3 seconds, and re-renders the UI without any page reload.
 
@@ -14,12 +14,12 @@ The dashboard is a standalone Python/Flask server that runs on your machine (not
 
 ## Key Features
 
-- **7 container-specific attacks** ΓÇö Docker socket escape, privileged container escape, namespace manipulation, resource abuse, network lateral movement, capability abuse, image/registry supply chain attack
-- **Real-time dashboard** ΓÇö auto-refreshes every 3 seconds, zero page reloads, live Docker container metrics (CPU, memory, network, disk I/O)
-- **ML risk scoring** ΓÇö Random Forest classifier scores each attack across 5 weighted features; contributions sum exactly to the displayed score
-- **MITRE ATT&CK mapping** ΓÇö every attack linked to technique IDs (T1611, T1496, T1046, T1525, T1055, T1068) with direct links to attack.mitre.org
-- **Expandable attack detail** ΓÇö click any row in the dashboard to see attack mechanics, MITRE mapping, and a full risk level breakdown with progress bars
-- **Vulnerable enterprise environment** ΓÇö e-commerce web app, payment API, PostgreSQL database, and a privileged container as realistic targets
+- **7 container-specific attacks:** Docker socket escape, privileged container escape, namespace manipulation, resource abuse, network lateral movement, capability abuse, image/registry supply chain attack
+- **Real-time dashboard:** auto-refreshes every 3 seconds, zero page reloads, live Docker container metrics (CPU, memory, network, disk I/O)
+- **ML risk scoring:** Random Forest classifier scores each attack across 5 weighted features; contributions sum exactly to the displayed score
+- **MITRE ATT&CK mapping:** every attack linked to technique IDs (T1611, T1496, T1046, T1525, T1055, T1068) with direct links to attack.mitre.org
+- **Expandable attack detail:** click any row in the dashboard to see attack mechanics, MITRE mapping, and a full risk level breakdown with progress bars
+- **Vulnerable enterprise environment:** e-commerce web app, payment API, PostgreSQL database, and a privileged container as realistic targets
 
 ---
 
@@ -146,7 +146,7 @@ pip --version      # or pip3 --version
 
 ---
 
-### Step 1 ΓÇö Clone the repository
+### Step 1: Clone the repository
 
 ```bash
 git clone <repository-url>
@@ -157,7 +157,7 @@ Replace `<repository-url>` with the actual GitHub URL and `<repository-folder>` 
 
 ---
 
-### Step 2 ΓÇö Install dashboard Python dependencies
+### Step 2: Install dashboard Python dependencies
 
 The dashboard (`run_dashboard.py`) runs on your host machine and needs three packages:
 
@@ -176,7 +176,7 @@ You should see `OK`. If you see an import error, re-run the pip install command.
 
 ---
 
-### Step 3 ΓÇö Build and start all Docker containers
+### Step 3: Build and start all Docker containers
 
 This builds all container images and starts them in the background. The first run downloads base images and installs dependencies ΓÇö expect 5ΓÇô10 minutes.
 
@@ -205,7 +205,7 @@ You should see all 6 containers with status `Up`. If any show `Exited`, see Trou
 
 ---
 
-### Step 4 ΓÇö Wait for services to initialize
+### Step 4: Wait for services to initialize
 
 The attack orchestrator and ML assessor need ~15 seconds to fully start their internal servers.
 
@@ -232,7 +232,7 @@ If you get a connection error, wait another 10 seconds and try again.
 
 ---
 
-### Step 5 ΓÇö Start the dashboard
+### Step 5: Start the dashboard
 
 Open a terminal in the project root folder and run:
 
@@ -259,7 +259,7 @@ You will see the dashboard with empty tables and dashes in the stat cards. That 
 
 ---
 
-### Step 6 ΓÇö Run the attack simulation
+### Step 6: Run the attack simulation
 
 Open a **second terminal** (keep the dashboard terminal running) and execute:
 
@@ -282,7 +282,7 @@ While the attacks run, switch back to your browser at **http://localhost:8888** 
 
 ---
 
-### Step 7 ΓÇö Explore the dashboard
+### Step 7: Explore the dashboard
 
 Once all attacks complete you will see:
 
