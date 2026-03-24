@@ -286,11 +286,11 @@ While the attacks run, switch back to your browser at **http://localhost:8888** 
 
 Once all attacks complete you will see:
 
-- **Stats bar** ΓÇö total attack types, success rate, critical/high risk counts
-- **Attack Distribution** ΓÇö donut chart with MITRE IDs on each slice
-- **Risk Assessment table** ΓÇö click any row to expand a 3-column detail panel showing attack mechanics, MITRE ATT&CK links, and the ML risk score breakdown
-- **Affected Infrastructure table** ΓÇö live CPU/memory metrics per container, with `i` buttons for impact details
-- **Footer** ΓÇö live dot + last updated timestamp confirming auto-refresh is active
+- **Stats bar:** total attack types, success rate, critical/high risk counts
+- **Attack Distribution:** donut chart with MITRE IDs on each slice
+- **Risk Assessment table:** click any row to expand a 3-column detail panel showing attack mechanics, MITRE ATT&CK links, and the ML risk score breakdown
+- **Affected Infrastructure table:** live CPU/memory metrics per container, with `i` buttons for impact details
+- **Footer:** live dot + last updated timestamp confirming auto-refresh is active
 
 ---
 
