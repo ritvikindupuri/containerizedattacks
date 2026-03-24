@@ -67,6 +67,8 @@ flowchart LR
 
 > **📖 Deep Dive:** For a comprehensive, step-by-step explanation of the Machine Learning scoring logic, feature weights, and a complete breakdown of the specific infrastructure and application-layer vulnerabilities, please read the [Technical Documentation](technical_documentation.md).
 
+> **🚨 Incident Response:** To see how the dashboard telemetry translates into a real-world security analysis, review the sample [Incident Report (INC-2024-03-22)](incident_reports.md).
+
 ---
 
 ## Tech Stack
