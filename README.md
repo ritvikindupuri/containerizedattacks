@@ -32,18 +32,20 @@ The dashboard is a standalone Python/Flask server that runs on your machine (not
 
 ## System Architecture
 
-<p align="center"><img src="https://i.imgur.com/Pk7ER0S.png" alt="System Architecture" width="800"/></p>
+<p align="center"><img src="https://i.imgur.com/k1WKHnF.png" alt="System Architecture" width="800"/></p>
 
 <p align="center"><em>Figure 1 - System Architecture</em></p>
 
 
-**Layer 1 - User Interface:** A single security analyst accesses the dashboard via browser at `localhost:8888`. All interaction flows down through HTTP REST API calls.
+**Attacker & Target Environment:** The simulated threat actor (`attack-orchestrator`) interacts with a highly vulnerable containerized infrastructure. The vulnerable target stack consists of `vulnerable-web` (exposing a mounted Docker socket and `CAP_SYS_ADMIN`), `vulnerable-api` (exposing SQL injection and credential disclosure), `vulnerable-db` (PostgreSQL with plaintext passwords), and `privileged-container` (running with `privileged: true` and a host filesystem mount).
 
-**Layer 2 - Dashboard (Port 8888):** `run_dashboard.py` is a standalone Flask server running on your host machine. It provides real-time attack visualization, built-in ML risk scoring, MITRE ATT&CK mapping, and live container metrics (CPU, memory, network, disk I/O). The frontend polls `/api/dashboard` every 3 seconds and re-renders without a page reload.
+**Attacks:** The orchestrator systematically executes 7 distinct container-specific attacks against the target environment. These attacks include: Docker socket escape, privileged container escape, namespace manipulation, resource abuse, network lateral movement, capability abuse, and image/registry supply chain attack.
 
-**Layer 3 - Processing Layer:** The `attack-orchestrator` container (port 9090) is the simulated threat actor. It runs 7 container-specific attack scripts sequentially and exposes results via a Prometheus metrics exporter. Four attacks (Namespace Manipulation, Resource Abuse, Capability Abuse, Image/Registry) execute within the orchestrator itself. Three attacks (Docker Socket Escape, Privileged Container Escape, Network Attacks) reach out to the target containers below.
+**Prometheus:** As the attacks execute, telemetry, status, and duration are continuously posted to an internal Prometheus metrics exporter running on port `9090`. This component aggregates the exploit signals and translates them into structured metrics.
 
-**Layer 4 - Target Environment:** Four intentionally misconfigured containers sit on the `172.20.0.0/16` isolated bridge network. `vulnerable-web` (port 8080) has the Docker socket mounted and `CAP_SYS_ADMIN` set. `vulnerable-api` (port 5000) exposes SQL injection and credential disclosure endpoints. `privileged-container` runs with `privileged: true` and the host filesystem mounted at `/host`. `vulnerable-db` (port 5432) is a PostgreSQL instance with plaintext passwords.
+**ML Model:** A Machine Learning risk assessment engine evaluates the captured attacks. Using a Random Forest classifier, it scores each attack across multiple weighted features (Privilege Escalation, Host Access, Data Exfiltration, Lateral Movement, Persistence) and maps the behaviors to specific MITRE ATT&CK techniques (e.g., T1611, T1046, T1525).
+
+**Dashboard:** A standalone Python/Flask application running on the host machine acts as the real-time visualization layer. It polls the Prometheus metrics every 3 seconds, merges them with live container statistics and the ML model's risk scores, and dynamically re-renders the UI to provide analysts with immediate, actionable threat intelligence.
 
 ---
 ---
