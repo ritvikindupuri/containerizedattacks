@@ -34,7 +34,7 @@ The dashboard is a standalone Python/Flask server that runs on your machine (not
 
 <p align="center"><img src="https://i.imgur.com/k1WKHnF.png" alt="System Architecture" width="800"/></p>
 
-<p align="center"><em>**Figure 1 - Container Security Lab Architecture**</em></p>
+<p align="center"><strong><em>Figure 1 - Container Security Lab Architecture</em></strong></p>
 
 
 **Layer 1 - Attacker & Target Environment:** The simulated threat actor (`attack-orchestrator`) interacts with a highly vulnerable containerized infrastructure. The vulnerable target stack consists of `vulnerable-web` (exposing a mounted Docker socket and `CAP_SYS_ADMIN`), `vulnerable-api` (exposing SQL injection and credential disclosure), `vulnerable-db` (PostgreSQL with plaintext passwords), and `privileged-container` (running with `privileged: true` and a host filesystem mount).
