@@ -34,18 +34,18 @@ The dashboard is a standalone Python/Flask server that runs on your machine (not
 
 <p align="center"><img src="https://i.imgur.com/k1WKHnF.png" alt="System Architecture" width="800"/></p>
 
-<p align="center"><em>Figure 1 - System Architecture</em></p>
+<p align="center"><em>**Figure 1 - Container Security Lab Architecture**</em></p>
 
 
-**Attacker & Target Environment:** The simulated threat actor (`attack-orchestrator`) interacts with a highly vulnerable containerized infrastructure. The vulnerable target stack consists of `vulnerable-web` (exposing a mounted Docker socket and `CAP_SYS_ADMIN`), `vulnerable-api` (exposing SQL injection and credential disclosure), `vulnerable-db` (PostgreSQL with plaintext passwords), and `privileged-container` (running with `privileged: true` and a host filesystem mount).
+**Layer 1 - Attacker & Target Environment:** The simulated threat actor (`attack-orchestrator`) interacts with a highly vulnerable containerized infrastructure. The vulnerable target stack consists of `vulnerable-web` (exposing a mounted Docker socket and `CAP_SYS_ADMIN`), `vulnerable-api` (exposing SQL injection and credential disclosure), `vulnerable-db` (PostgreSQL with plaintext passwords), and `privileged-container` (running with `privileged: true` and a host filesystem mount).
 
-**Attacks:** The orchestrator systematically executes 7 distinct container-specific attacks against the target environment. These attacks include: Docker socket escape, privileged container escape, namespace manipulation, resource abuse, network lateral movement, capability abuse, and image/registry supply chain attack.
+**Layer 2 - Attacks:** The orchestrator systematically executes 7 distinct container-specific attacks against the target environment. These attacks include: Docker socket escape, privileged container escape, namespace manipulation, resource abuse, network lateral movement, capability abuse, and image/registry supply chain attack.
 
-**Prometheus:** As the attacks execute, telemetry, status, and duration are continuously posted to an internal Prometheus metrics exporter running on port `9090`. This component aggregates the exploit signals and translates them into structured metrics.
+**Layer 3 - Prometheus:** As the attacks execute, telemetry, status, and duration are continuously posted to an internal Prometheus metrics exporter running on port `9090`. This component aggregates the exploit signals and translates them into structured metrics.
 
-**ML Model:** A Machine Learning risk assessment engine evaluates the captured attacks. Using a Random Forest classifier, it scores each attack across multiple weighted features (Privilege Escalation, Host Access, Data Exfiltration, Lateral Movement, Persistence) and maps the behaviors to specific MITRE ATT&CK techniques (e.g., T1611, T1046, T1525).
+**Layer 4 -ML Model:** A Machine Learning risk assessment engine evaluates the captured attacks. Using a Random Forest classifier, it scores each attack across multiple weighted features (Privilege Escalation, Host Access, Data Exfiltration, Lateral Movement, Persistence) and maps the behaviors to specific MITRE ATT&CK techniques (e.g., T1611, T1046, T1525).
 
-**Dashboard:** A standalone Python/Flask application running on the host machine acts as the real-time visualization layer. It polls the Prometheus metrics every 3 seconds, merges them with live container statistics and the ML model's risk scores, and dynamically re-renders the UI to provide analysts with immediate, actionable threat intelligence.
+**Layer 5 - Dashboard:** A standalone Python/Flask application running on the host machine acts as the real-time visualization layer. It polls the Prometheus metrics every 3 seconds, merges them with live container statistics and the ML model's risk scores, and dynamically re-renders the UI to provide analysts with immediate, actionable threat intelligence.
 
 ---
 ---
