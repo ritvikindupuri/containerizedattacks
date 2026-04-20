@@ -28,13 +28,6 @@ The architecture of the system is divided into multiple interconnected component
 
 ### Architectural Components
 
-To provide a concrete visualization of the isolated attack network, Figure 2 below displays the active container stack as seen during an active simulation.
-
-<p align="center">
-  <img src="https://imgur.com/uApHV20.png" alt="Docker Containers Running" width="800"/>
-</p>
-<p align="center"><em>Figure 2: The complete isolated Docker container stack running the simulation.</em></p>
-
 As visualized in Figure 1, the architecture is driven by the following distinct components:
 
 1.  **Attacker & Target Environment (`attack-orchestrator` and Vulnerable Infrastructure)**: A dedicated container (`attack-orchestrator`) acts as the adversary. It executes attacks against a meticulously misconfigured stack representing a flawed enterprise environment. This vulnerable target environment includes a web application (`vulnerable-web`), an API (`vulnerable-api`), a PostgreSQL database (`vulnerable-db`), and a deeply flawed privileged container (`privileged-container`).
@@ -319,6 +312,13 @@ The base weight distribution—Privilege Escalation (25%), Host Access (25%), Da
 
 The system relies on a meticulously configured `docker-compose.yml` to define the target environment and the attack orchestrator. Below is the detailed breakdown of every container and the exact infrastructure code that provisions it.
 
+To provide a concrete visualization of the isolated attack network, Figure 2 below displays the active container stack as seen during an active simulation.
+
+<p align="center">
+  <img src="https://imgur.com/uApHV20.png" alt="Docker Containers Running" width="800"/>
+</p>
+<p align="center"><em>Figure 2: The complete isolated Docker container stack running the simulation.</em></p>
+
 ### Vulnerable Web Application (`vulnerable-web`)
 
 This container simulates a front-end web application that has been critically misconfigured during deployment.
@@ -540,9 +540,6 @@ This section provides the exact code for each of the 7 simulated attacks execute
 **MITRE Technique:** [T1611 - Escape to Host](https://attack.mitre.org/techniques/T1611/)
 **Severity:** CRITICAL
 
-**How it Works:**
-The script targets the exposed `/var/run/docker.sock`. By connecting to this socket, the container can communicate directly with the host's Docker daemon. It exploits this access to spawn a new, fully privileged `alpine` container (`privileged=True`) and maps the host's root filesystem (`/`) to a volume inside the new container (`/host`). This grants the attacker full read/write access to the host operating system, achieving a complete container escape.
-
 **Full Code (`attacks/1_docker_socket_escape.py`):**
 ```python
 #!/usr/bin/env python3
@@ -638,13 +635,20 @@ if __name__ == "__main__":
     docker_socket_escape()
 ```
 
+**How it Works:**
+The script targets the exposed `/var/run/docker.sock`. By connecting to this socket, the container can communicate directly with the host's Docker daemon. It exploits this access to spawn a new, fully privileged `alpine` container (`privileged=True`) and maps the host's root filesystem (`/`) to a volume inside the new container (`/host`). This grants the attacker full read/write access to the host operating system, achieving a complete container escape.
+
+**Detailed Execution Mechanics:**
+1. **Socket Access Validation:** The script first attempts to instantiate a Docker client using `docker.from_env()`. Because the `/var/run/docker.sock` volume is maliciously mounted into the attacker's container, this operation succeeds and establishes an unauthenticated, local connection to the host's Docker daemon.
+2. **Daemon Interaction:** It calls `client.containers.list()` to list running containers. This action proves the attacker can execute administrative Docker API commands on the host.
+3. **Privileged Spawning:** The core exploit involves calling `client.containers.run(...)`. The attacker instructs the host's Docker daemon to download the `alpine:latest` image and run a new container with the `privileged=True` flag. This disables standard AppArmor/SELinux profiles for the new container.
+4. **Filesystem Mounting:** The critical parameter passed to the daemon is `volumes={'/': {'bind': '/host', 'mode': 'rw'}}`. This bind-mounts the root filesystem of the actual host machine directly into the new privileged container at the `/host` directory.
+5. **Escape Command Execution:** The command `sh -c 'echo ESCAPED! && cat /host/etc/hostname && sleep 30'` is executed within the new container. Because the host's root filesystem is mounted, the `cat /host/etc/hostname` command effectively reads the hostname of the underlying host OS. At this point, the attacker has full read, write, and execution capabilities on the host system via the `/host` directory, achieving a complete breakout.
+
 ### 5.2 Privileged Container Escape (T1611)
 
 **MITRE Technique:** [T1611 - Escape to Host](https://attack.mitre.org/techniques/T1611/)
 **Severity:** CRITICAL
-
-**How it Works:**
-Privileged containers disable standard Linux security profiles (AppArmor/SELinux) and grant access to host devices. This attack exploits cgroup isolation. It creates a new cgroup, mounts it, and modifies the `release_agent` file. By intentionally triggering a cgroup release (creating a process inside the cgroup that immediately exits), the host kernel executes the attacker's script defined in the `release_agent` as root on the host machine, breaking container isolation.
 
 **Full Code (`attacks/2_privileged_container_escape.py`):**
 ```python
@@ -771,13 +775,19 @@ if __name__ == "__main__":
     cgroup_escape()
 ```
 
+**How it Works:**
+Privileged containers disable standard Linux security profiles (AppArmor/SELinux) and grant access to host devices. This attack exploits cgroup isolation. It creates a new cgroup, mounts it, and modifies the `release_agent` file. By intentionally triggering a cgroup release (creating a process inside the cgroup that immediately exits), the host kernel executes the attacker's script defined in the `release_agent` as root on the host machine, breaking container isolation.
+
+**Detailed Execution Mechanics:**
+1. **Privilege Verification:** The script starts by inspecting `/proc/self/status` to determine its capability bounding set. It looks for the `CapEff` value `0000003fffffffff` or `000001ffffffffff`, which indicates all Linux capabilities are enabled, confirming the container is indeed running in privileged mode.
+2. **Cgroup Creation and Mounting:** The script issues `mkdir -p /tmp/cgrp` and mounts the cgroup memory subsystem to this temporary directory using `mount -t cgroup -o memory cgroup /tmp/cgrp`. This is possible because privileged mode drops the seccomp filters that normally prevent mounting filesystems inside a container. Next, it creates a child cgroup directory: `mkdir -p /tmp/cgrp/x`.
+3. **Release Agent Configuration:** The core mechanism of the cgroup `release_agent` feature allows an administrator to define a script that the kernel will run when a cgroup becomes empty (i.e., all processes within it exit). The script configures this by creating an executable payload file at `/tmp/escape.sh` and echoing its path into the `release_agent` file of the root cgroup.
+4. **Triggering Execution on Host:** Finally, the script forces the kernel to execute the `release_agent`. It enables `notify_on_release` in the newly created `/tmp/cgrp/x` child cgroup. Then, it forks a quick, short-lived process (like `sh -c "echo 1"`) into the child cgroup. As soon as this process exits, the child cgroup is emptied, and the host kernel intercepts the `release_agent` trigger, executing the `/tmp/escape.sh` script as the host's `root` user, entirely outside the container namespace.
+
 ### 5.3 Namespace Manipulation (T1611)
 
 **MITRE Technique:** [T1611 - Escape to Host](https://attack.mitre.org/techniques/T1611/)
 **Severity:** CRITICAL
-
-**How it Works:**
-Containers are fundamentally built on Linux namespaces (PID, NET, MNT, UTS, IPC). If an attacker finds a misconfiguration where they share the host's PID namespace, they can see host processes. By leveraging tools like `nsenter` or `unshare` and accessing `/proc/1/root` (the host's root filesystem), they can bridge the namespace isolation boundaries, crossing from the containerized space back into the host environment.
 
 **Full Code (`attacks/3_namespace_manipulation.py`):**
 ```python
@@ -923,13 +933,19 @@ if __name__ == "__main__":
     namespace_manipulation()
 ```
 
+**How it Works:**
+Containers are fundamentally built on Linux namespaces (PID, NET, MNT, UTS, IPC). If an attacker finds a misconfiguration where they share the host's PID namespace, they can see host processes. By leveraging tools like `nsenter` or `unshare` and accessing `/proc/1/root` (the host's root filesystem), they can bridge the namespace isolation boundaries, crossing from the containerized space back into the host environment.
+
+**Detailed Execution Mechanics:**
+1. **Namespace Isolation Discovery:** The script probes the `/proc/self/ns/` directory. By inspecting symlinks like `pid`, `net`, and `mnt`, the attacker can determine the specific namespace identifiers the container is bound to.
+2. **PID Namespace Violation Check:** It runs `ps aux` to list running processes. If the container was mistakenly started with `--pid=host`, the attacker will see not just the container's processes, but every process running on the actual host OS (including SSH daemons, database services, etc.).
+3. **nsenter Exploitation:** The script checks for the availability of the `nsenter` binary. `nsenter` allows a process to join an existing namespace. By executing a command like `nsenter -t 1 -m -u -n -i sh`, the script instructs `nsenter` to target PID 1 (the host's `init` or `systemd` process, visible due to the shared PID namespace) and seamlessly join its Mount (`-m`), UTS (`-u`), Network (`-n`), and IPC (`-i`) namespaces. This effectively transitions the attacker's shell from the container context to the host context.
+4. **Filesystem Bridging via Procfs:** Finally, the script checks for access to `/proc/1/root`. Every process in Linux maintains a reference to its root directory in its `/proc` entry. Because PID 1 is the host's initialization process, `/proc/1/root` functions as a direct symlink to the host's root filesystem (`/`). An attacker can simply `ls -la /proc/1/root` to browse the host filesystem or `chroot /proc/1/root` to permanently anchor their shell to the host OS, bypassing the container's mount namespace entirely.
+
 ### 5.4 Resource Abuse (T1499)
 
 **MITRE Technique:** [T1499 - Endpoint Denial of Service](https://attack.mitre.org/techniques/T1499/)
 **Severity:** MEDIUM
-
-**How it Works:**
-If a container is deployed without strict cgroup resource limits (e.g., limits on memory, CPU, or max PIDs), an attacker can execute resource exhaustion attacks. The script executes four specific denial-of-service behaviors: a fork bomb (spawning processes rapidly to exhaust the PID namespace), memory allocation loops (to trigger Out-Of-Memory conditions), CPU burning (maxing out processing cycles), and heavy Disk I/O generation. This impacts the stability of both the container and potentially the host node.
 
 **Full Code (`attacks/4_resource_abuse.py`):**
 ```python
@@ -1181,13 +1197,20 @@ if __name__ == "__main__":
     resource_abuse_attack()
 ```
 
+**How it Works:**
+If a container is deployed without strict cgroup resource limits (e.g., limits on memory, CPU, or max PIDs), an attacker can execute resource exhaustion attacks. The script executes four specific denial-of-service behaviors: a fork bomb (spawning processes rapidly to exhaust the PID namespace), memory allocation loops (to trigger Out-Of-Memory conditions), CPU burning (maxing out processing cycles), and heavy Disk I/O generation. This impacts the stability of both the container and potentially the host node.
+
+**Detailed Execution Mechanics:**
+1. **Resource Limit Discovery:** The script first checks the container's cgroup virtual filesystem (`/sys/fs/cgroup/`) to dynamically determine the current limitations. It inspects `memory.limit_in_bytes`, `cpu.cfs_quota_us`, and `pids.max` to verify if the container is running unbounded.
+2. **PID Exhaustion (Fork Bomb):** It initiates a controlled fork bomb by iterating rapidly and using `subprocess.Popen` to spawn dozens of child `sleep 30` processes. Without a `pids.max` limit, a real fork bomb would exponentially duplicate until the host kernel exhausts its process table, triggering a kernel panic or hard system freeze.
+3. **Memory Exhaustion (OOM Inducement):** The script executes a rapid memory allocation loop, sequentially generating large 100MB `bytearray` chunks in RAM (`bytearray(100 * 1024 * 1024)`). If the container lacks a defined memory limit (`-m` flag in Docker), this will consume the host's physical RAM and swap space, eventually forcing the Linux Out-Of-Memory (OOM) killer to arbitrarily terminate vital host processes.
+4. **CPU Saturation:** To burn CPU cycles, it leverages Python's `multiprocessing` module to spawn worker processes equivalent to twice the number of available CPU cores (`multiprocessing.cpu_count() * 2`). Each worker process runs a tight integer summation loop `sum(range(1000000))`. Without `cpu.cfs_quota_us` capping, this will saturate all available host CPU threads at 100% utilization, causing extreme degradation for neighboring containers.
+5. **Disk I/O Thrashing:** The script generates immense disk pressure by rapidly writing massive blocks of random data `os.urandom(50 * 1024 * 1024)` into temporary files located in `/tmp`. This saturates the underlying disk controller's write bandwidth and quickly consumes the host's free inode/block space, creating severe latency bottlenecks.
+
 ### 5.5 Container Network Attacks (T1046)
 
 **MITRE Technique:** [T1046 - Network Service Discovery](https://attack.mitre.org/techniques/T1046/)
 **Severity:** HIGH
-
-**How it Works:**
-Docker uses isolated bridge networks by default. When an attacker breaches a container on an internal network (e.g., `attack-net`), they can map the internal architecture. This script performs network reconnaissance by scraping IP routes, querying internal DNS to resolve container names (like `vulnerable-db`), and performing rapid port scans across common internal service ports. It then validates lateral movement by verifying HTTP responses or database connections from adjacent containers.
 
 **Full Code (`attacks/5_container_network_attacks.py`):**
 ```python
@@ -1453,13 +1476,21 @@ if __name__ == "__main__":
     container_network_attack()
 ```
 
+**How it Works:**
+Docker uses isolated bridge networks by default. When an attacker breaches a container on an internal network (e.g., `attack-net`), they can map the internal architecture. This script performs network reconnaissance by scraping IP routes, querying internal DNS to resolve container names (like `vulnerable-db`), and performing rapid port scans across common internal service ports. It then validates lateral movement by verifying HTTP responses or database connections from adjacent containers.
+
+**Detailed Execution Mechanics:**
+1. **Host Identity Discovery:** The script starts by resolving its own network identity via `socket.gethostname()` and `socket.gethostbyname()`. It then runs `ip addr show` via subprocess to list all attached network interfaces, identifying internal bridge IPs (usually in the `172.x.x.x` range).
+2. **Subnet Routing Extraction:** By executing `ip route | grep default`, the script extracts the container's default gateway. This confirms the primary subnet block it operates within, which guides the boundaries for subsequent lateral scans.
+3. **Internal DNS Enumeration:** In Docker bridge networks, containers can resolve each other by name (e.g., `vulnerable-db`). The script leverages this built-in DNS by iterating over a list of `known_containers` and attempting `socket.gethostbyname()`. If successful, it maps the hostname directly to the container's internal IP address, bypassing the need for a noisy, brute-force ICMP sweep.
+4. **Service Discovery (Port Scanning):** Once target IPs are resolved, the script performs an asynchronous TCP connect scan against common service ports (`80, 443, 5432`, etc.). It uses `socket.socket()` with a low `0.5` second timeout. A successful `connect_ex()` resulting in `0` indicates an open, listening service on that adjacent container.
+5. **Lateral Movement Validation:** Based on the discovered open ports, the script attempts basic lateral movement. If HTTP ports are open, it executes a silent `curl` request to fetch the HTTP status code, verifying that Layer-7 communication is unimpeded.
+6. **Infrastructure Mapping:** Finally, it inspects `/etc/resolv.conf` to identify internal DNS servers and scans the process table (`ps aux`) for known Service Mesh binaries (like `envoy` or `istio-proxy`). This maps the broader network architecture and identifies advanced targets for traffic interception.
+
 ### 5.6 Capability Abuse (T1068)
 
 **MITRE Technique:** [T1068 - Exploitation for Privilege Escalation](https://attack.mitre.org/techniques/T1068/)
 **Severity:** CRITICAL
-
-**How it Works:**
-Docker manages privileges granularly via Linux Capabilities. If a container is deployed with `cap_add: [SYS_ADMIN]`, it gains extreme privileges. The script checks for capabilities like `CAP_SYS_ADMIN` (allows mounting arbitrary filesystems), `CAP_SYS_PTRACE` (allows process injection/debugging), and `CAP_DAC_OVERRIDE` (bypasses all file permission checks). If found, it abuses these capabilities to read protected files or manipulate host components.
 
 **Full Code (`attacks/6_capability_abuse.py`):**
 ```python
@@ -1773,13 +1804,20 @@ if __name__ == "__main__":
     capability_abuse_attack()
 ```
 
+**How it Works:**
+Docker manages privileges granularly via Linux Capabilities. If a container is deployed with `cap_add: [SYS_ADMIN]`, it gains extreme privileges. The script checks for capabilities like `CAP_SYS_ADMIN` (allows mounting arbitrary filesystems), `CAP_SYS_PTRACE` (allows process injection/debugging), and `CAP_DAC_OVERRIDE` (bypasses all file permission checks). If found, it abuses these capabilities to read protected files or manipulate host components.
+
+**Detailed Execution Mechanics:**
+1. **Capability Bounding Set Enumeration:** The script first checks `/proc/self/status`, looking for the `Cap` lines (which include Effective, Permitted, and Inheritable capability bitmasks). To make this human-readable, it executes `capsh --print`, a binary specifically designed to parse and display the current Linux capabilities granted to the container environment.
+2. **Exploiting CAP_SYS_ADMIN:** The script checks if `cap_sys_admin` is present. If it is, the script demonstrates the danger by attempting to mount a `tmpfs` filesystem using `mount -t tmpfs tmpfs /tmp/test_mount`. Normally, Docker blocks the `mount` syscall inside containers, but `CAP_SYS_ADMIN` overrides this seccomp filter. This proves the attacker can mount the host's physical `/dev` partitions directly into the container.
+3. **Exploiting CAP_SYS_PTRACE:** It checks for `cap_sys_ptrace`. If found, it verifies if debugging tools like `strace` or `gdb` are available. This capability allows the attacker to use `ptrace()` system calls to attach to, inspect the memory of, and inject malicious shellcode directly into other running processes visible within the PID namespace.
+4. **Exploiting CAP_DAC_OVERRIDE:** It checks for `cap_dac_override`. This capability instructs the Linux kernel to entirely bypass Discretionary Access Control (DAC) file permission checks (the standard Read/Write/Execute bits). To prove this, the script attempts to read highly restricted files like `/etc/shadow` or `/root/.ssh/id_rsa`. Even if the files are owned by `root:root` with `0600` permissions, `CAP_DAC_OVERRIDE` allows the attacker process to read them instantly.
+5. **Exploiting CAP_SYS_MODULE:** It checks for `cap_sys_module`. If present, the attacker executes `lsmod` to view the kernel modules loaded on the host. This capability is exceptionally dangerous because it permits the `init_module` and `finit_module` syscalls, meaning the attacker could dynamically load a malicious rootkit directly into the underlying host's kernel space.
+
 ### 5.7 Image & Registry Attacks (T1525)
 
 **MITRE Technique:** [T1525 - Implant Internal Image](https://attack.mitre.org/techniques/T1525/)
 **Severity:** CRITICAL
-
-**How it Works:**
-Containers are built on static images. This attack focuses on supply-chain flaws within those images. The script combs through common paths looking for hardcoded `.env` files, SSH keys, or AWS tokens. Crucially, it hunts for `/root/.docker/config.json`, which frequently houses base64 encoded registry authentication tokens. Compromising these tokens allows an attacker to push malicious backdoor images back to the private corporate registry, resulting in persistent compromise across future deployments.
 
 **Full Code (`attacks/7_image_registry_attacks.py`):**
 ```python
@@ -2095,6 +2133,15 @@ if __name__ == "__main__":
     image_registry_attack()
 ```
 
+**How it Works:**
+Containers are built on static images. This attack focuses on supply-chain flaws within those images. The script combs through common paths looking for hardcoded `.env` files, SSH keys, or AWS tokens. Crucially, it hunts for `/root/.docker/config.json`, which frequently houses base64 encoded registry authentication tokens. Compromising these tokens allows an attacker to push malicious backdoor images back to the private corporate registry, resulting in persistent compromise across future deployments.
+
+**Detailed Execution Mechanics:**
+1. **Container Identity and Origin Check:** The script determines its running context by checking for `/.dockerenv`. It then attempts to resolve its specific `HOSTNAME` (which in Docker defaults to the short container ID), giving the attacker a baseline identifier for the executing environment.
+2. **Hardcoded Secrets Harvesting:** It executes a recursive file search using `find` across critical directories (`/app`, `/root`, `/etc`). It specifically targets `.env` configuration files that are commonly (and improperly) baked into the image during the `docker build` process. It also checks a predefined list of high-value credential paths, such as `/root/.aws/credentials` (for cloud lateral movement) and `/root/.ssh/id_rsa`.
+3. **Registry Token Extraction:** The most critical phase targets the Docker daemon configuration file, typically located at `/root/.docker/config.json`. The script reads this file using Python's `json` module and extracts the `auths` dictionary. This dictionary contains base64-encoded authentication tokens used to log into remote container registries (like Docker Hub, AWS ECR, or a private Harbor instance). Extracting these allows supply chain compromise.
+4. **Image Layer Analysis via Socket:** If the container has been improperly provisioned with the Docker socket (`/var/run/docker.sock`), the script uses the previously captured container ID and runs `docker inspect <container_id>`. This extracts the deep metadata of the image, including the exact build layers (`RootFS.Layers`). An attacker can use this to pull and reconstruct previous image layers to find secrets that were "deleted" in later layers but still exist in the image history.
+5. **Malicious Deployment Probing:** Leveraging that same exposed Docker socket, it issues a `docker images` command. This proves the attacker has the requisite permissions to interact with the host's local image cache. With the extracted registry tokens, the attacker could now execute `docker push` to inject a trojanized image directly into the organization's supply chain.
 
 ## 6. Conclusion
 
