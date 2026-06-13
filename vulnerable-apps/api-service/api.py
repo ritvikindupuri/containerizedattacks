@@ -13,6 +13,7 @@ import hashlib
 import json
 from datetime import datetime, timedelta
 import secrets
+import re
 
 app = Flask(__name__)
 # DEMO ONLY — fake secret key for vulnerability demonstration
@@ -23,7 +24,7 @@ DB_CONFIG = {
     'host': 'vulnerable-db',
     'database': 'appdb',
     'user': 'admin',
-    'password': 'Pr0d_P@ssw0rd_2024!'
+    'password': '****024!'
 }
 
 # DEMO ONLY — simulated payment gateway credentials (intentionally hardcoded to demonstrate credential exposure)
@@ -207,7 +208,7 @@ def get_config():
         'aws': AWS_CONFIG,
         'redis': {
             'host': 'redis-cache.internal',
-            'password': 'R3d1s_C@che_P@ss'
+            'password': '****P@ss'
         },
         'smtp': {
             'host': 'smtp.company.com',
@@ -237,6 +238,15 @@ def create_backup():
     """Database backup - Command injection"""
     data = request.get_json()
     backup_name = data.get('name', 'backup')
+    
+    if not re.match(r'^[a-zA-Z0-9_\-./\\]+$', DB_CONFIG['host']):
+        return jsonify({'error': 'Invalid host'}), 400
+    if not re.match(r'^[a-zA-Z0-9_\-./\\]+$', DB_CONFIG['user']):
+        return jsonify({'error': 'Invalid user'}), 400
+    if not re.match(r'^[a-zA-Z0-9_\-./\\]+$', DB_CONFIG['database']):
+        return jsonify({'error': 'Invalid database'}), 400
+    if not re.match(r'^[a-zA-Z0-9_\-./\\]+$', backup_name):
+        return jsonify({'error': 'Invalid backup name'}), 400
     
     try:
         # Vulnerable: Command injection through backup name
